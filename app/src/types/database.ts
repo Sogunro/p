@@ -1,0 +1,623 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export interface Database {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string
+          email: string
+          full_name: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          email: string
+          full_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string
+          full_name?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      templates: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          is_system: boolean
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          description?: string | null
+          is_system?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          is_system?: boolean
+          created_by?: string | null
+          created_at?: string
+        }
+      }
+      template_sections: {
+        Row: {
+          id: string
+          template_id: string
+          name: string
+          order_index: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          template_id: string
+          name: string
+          order_index?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          template_id?: string
+          name?: string
+          order_index?: number
+          created_at?: string
+        }
+      }
+      sessions: {
+        Row: {
+          id: string
+          user_id: string
+          template_id: string | null
+          title: string
+          status: 'draft' | 'active' | 'completed'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          template_id?: string | null
+          title: string
+          status?: 'draft' | 'active' | 'completed'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          template_id?: string | null
+          title?: string
+          status?: 'draft' | 'active' | 'completed'
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      session_objectives: {
+        Row: {
+          id: string
+          session_id: string
+          content: string
+          order_index: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          content: string
+          order_index?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          content?: string
+          order_index?: number
+          created_at?: string
+        }
+      }
+      session_checklist_items: {
+        Row: {
+          id: string
+          session_id: string
+          content: string
+          is_checked: boolean
+          is_default: boolean
+          order_index: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          content: string
+          is_checked?: boolean
+          is_default?: boolean
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          content?: string
+          is_checked?: boolean
+          is_default?: boolean
+          order_index?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      constraints: {
+        Row: {
+          id: string
+          user_id: string
+          type: string
+          label: string
+          value: string | null
+          is_system: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          type: string
+          label: string
+          value?: string | null
+          is_system?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          type?: string
+          label?: string
+          value?: string | null
+          is_system?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      session_constraints: {
+        Row: {
+          id: string
+          session_id: string
+          constraint_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          constraint_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          constraint_id?: string
+          created_at?: string
+        }
+      }
+      sections: {
+        Row: {
+          id: string
+          session_id: string
+          name: string
+          order_index: number
+          position_x: number
+          position_y: number
+          width: number
+          height: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          name: string
+          order_index?: number
+          position_x?: number
+          position_y?: number
+          width?: number
+          height?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          name?: string
+          order_index?: number
+          position_x?: number
+          position_y?: number
+          width?: number
+          height?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      sticky_notes: {
+        Row: {
+          id: string
+          section_id: string
+          content: string
+          position_x: number
+          position_y: number
+          has_evidence: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          section_id: string
+          content: string
+          position_x?: number
+          position_y?: number
+          has_evidence?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          section_id?: string
+          content?: string
+          position_x?: number
+          position_y?: number
+          has_evidence?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      evidence: {
+        Row: {
+          id: string
+          sticky_note_id: string
+          type: 'url' | 'text'
+          url: string | null
+          content: string | null
+          title: string | null
+          strength: 'high' | 'medium' | 'low'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          sticky_note_id: string
+          type: 'url' | 'text'
+          url?: string | null
+          content?: string | null
+          title?: string | null
+          strength?: 'high' | 'medium' | 'low'
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          sticky_note_id?: string
+          type?: 'url' | 'text'
+          url?: string | null
+          content?: string | null
+          title?: string | null
+          strength?: 'high' | 'medium' | 'low'
+          created_at?: string
+        }
+      }
+      sticky_note_links: {
+        Row: {
+          id: string
+          source_note_id: string
+          target_note_id: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          source_note_id: string
+          target_note_id: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          source_note_id?: string
+          target_note_id?: string
+          created_at?: string
+        }
+      }
+      session_analyses: {
+        Row: {
+          id: string
+          session_id: string
+          objective_score: number | null
+          summary: string | null
+          assumptions: Json | null
+          evidence_backed: Json | null
+          validation_recommendations: Json | null
+          constraint_analysis: Json | null
+          checklist_review: Json | null
+          raw_response: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          objective_score?: number | null
+          summary?: string | null
+          assumptions?: Json | null
+          evidence_backed?: Json | null
+          validation_recommendations?: Json | null
+          constraint_analysis?: Json | null
+          checklist_review?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          objective_score?: number | null
+          summary?: string | null
+          assumptions?: Json | null
+          evidence_backed?: Json | null
+          validation_recommendations?: Json | null
+          constraint_analysis?: Json | null
+          checklist_review?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+        }
+      }
+      // Phase 2: Workspaces & Evidence Bank
+      workspaces: {
+        Row: {
+          id: string
+          name: string
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      workspace_members: {
+        Row: {
+          id: string
+          workspace_id: string
+          user_id: string
+          role: 'owner' | 'admin' | 'member'
+          joined_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          user_id: string
+          role?: 'owner' | 'admin' | 'member'
+          joined_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          user_id?: string
+          role?: 'owner' | 'admin' | 'member'
+          joined_at?: string
+        }
+      }
+      evidence_bank: {
+        Row: {
+          id: string
+          workspace_id: string
+          title: string
+          type: 'url' | 'text'
+          url: string | null
+          content: string | null
+          strength: 'high' | 'medium' | 'low'
+          source_system: 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          source_metadata: Json
+          tags: string[]
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          title: string
+          type: 'url' | 'text'
+          url?: string | null
+          content?: string | null
+          strength?: 'high' | 'medium' | 'low'
+          source_system?: 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          source_metadata?: Json
+          tags?: string[]
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          title?: string
+          type?: 'url' | 'text'
+          url?: string | null
+          content?: string | null
+          strength?: 'high' | 'medium' | 'low'
+          source_system?: 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          source_metadata?: Json
+          tags?: string[]
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      sticky_note_evidence_links: {
+        Row: {
+          id: string
+          sticky_note_id: string
+          evidence_bank_id: string
+          linked_at: string
+        }
+        Insert: {
+          id?: string
+          sticky_note_id: string
+          evidence_bank_id: string
+          linked_at?: string
+        }
+        Update: {
+          id?: string
+          sticky_note_id?: string
+          evidence_bank_id?: string
+          linked_at?: string
+        }
+      }
+      insights_feed: {
+        Row: {
+          id: string
+          workspace_id: string
+          source_system: 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          title: string
+          content: string | null
+          url: string | null
+          strength: 'high' | 'medium' | 'low'
+          source_metadata: Json
+          is_added_to_bank: boolean
+          is_dismissed: boolean
+          fetched_at: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          source_system: 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          title: string
+          content?: string | null
+          url?: string | null
+          strength?: 'high' | 'medium' | 'low'
+          source_metadata?: Json
+          is_added_to_bank?: boolean
+          is_dismissed?: boolean
+          fetched_at?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          source_system?: 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          title?: string
+          content?: string | null
+          url?: string | null
+          strength?: 'high' | 'medium' | 'low'
+          source_metadata?: Json
+          is_added_to_bank?: boolean
+          is_dismissed?: boolean
+          fetched_at?: string
+          created_at?: string
+        }
+      }
+      workspace_settings: {
+        Row: {
+          id: string
+          workspace_id: string
+          feed_schedule_time: string
+          feed_timezone: string
+          feed_enabled: boolean
+          slack_enabled: boolean
+          slack_webhook_url: string | null
+          notion_enabled: boolean
+          notion_webhook_url: string | null
+          mixpanel_enabled: boolean
+          mixpanel_webhook_url: string | null
+          airtable_enabled: boolean
+          airtable_webhook_url: string | null
+          last_fetch_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          feed_schedule_time?: string
+          feed_timezone?: string
+          feed_enabled?: boolean
+          slack_enabled?: boolean
+          slack_webhook_url?: string | null
+          notion_enabled?: boolean
+          notion_webhook_url?: string | null
+          mixpanel_enabled?: boolean
+          mixpanel_webhook_url?: string | null
+          airtable_enabled?: boolean
+          airtable_webhook_url?: string | null
+          last_fetch_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          feed_schedule_time?: string
+          feed_timezone?: string
+          feed_enabled?: boolean
+          slack_enabled?: boolean
+          slack_webhook_url?: string | null
+          notion_enabled?: boolean
+          notion_webhook_url?: string | null
+          mixpanel_enabled?: boolean
+          mixpanel_webhook_url?: string | null
+          airtable_enabled?: boolean
+          airtable_webhook_url?: string | null
+          last_fetch_at?: string | null
+          updated_at?: string
+        }
+      }
+    }
+  }
+}
+
+// Convenience types
+export type Profile = Database['public']['Tables']['profiles']['Row']
+export type Template = Database['public']['Tables']['templates']['Row']
+export type TemplateSection = Database['public']['Tables']['template_sections']['Row']
+export type Session = Database['public']['Tables']['sessions']['Row']
+export type SessionObjective = Database['public']['Tables']['session_objectives']['Row']
+export type SessionChecklistItem = Database['public']['Tables']['session_checklist_items']['Row']
+export type Constraint = Database['public']['Tables']['constraints']['Row']
+export type SessionConstraint = Database['public']['Tables']['session_constraints']['Row']
+export type Section = Database['public']['Tables']['sections']['Row']
+export type StickyNote = Database['public']['Tables']['sticky_notes']['Row']
+export type Evidence = Database['public']['Tables']['evidence']['Row']
+export type StickyNoteLink = Database['public']['Tables']['sticky_note_links']['Row']
+export type SessionAnalysis = Database['public']['Tables']['session_analyses']['Row']
+
+// Phase 2: Workspace & Evidence Bank types
+export type Workspace = Database['public']['Tables']['workspaces']['Row']
+export type WorkspaceMember = Database['public']['Tables']['workspace_members']['Row']
+export type EvidenceBank = Database['public']['Tables']['evidence_bank']['Row']
+export type StickyNoteEvidenceLink = Database['public']['Tables']['sticky_note_evidence_links']['Row']
+export type InsightsFeed = Database['public']['Tables']['insights_feed']['Row']
+export type WorkspaceSettings = Database['public']['Tables']['workspace_settings']['Row']
+
+// Source system type for reuse
+export type SourceSystem = 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+export type EvidenceStrength = 'high' | 'medium' | 'low'

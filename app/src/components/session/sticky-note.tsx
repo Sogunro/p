@@ -1,0 +1,177 @@
+'use client'
+
+import { useState, useRef, useEffect } from 'react'
+import type { StickyNote as StickyNoteType, Evidence } from '@/types/database'
+
+interface StickyNoteProps {
+  note: StickyNoteType & { evidence: Evidence[] }
+  onUpdate: (content: string) => void
+  onDelete: () => void
+  onOpenEvidence: (rect: DOMRect) => void
+  onPositionChange: (x: number, y: number) => void
+  isLinkMode?: boolean
+  isLinkSource?: boolean
+  onLinkClick?: () => void
+}
+
+export function StickyNote({
+  note,
+  onUpdate,
+  onDelete,
+  onOpenEvidence,
+  onPositionChange,
+  isLinkMode = false,
+  isLinkSource = false,
+  onLinkClick,
+}: StickyNoteProps) {
+  const [isEditing, setIsEditing] = useState(!note.content)
+  const [content, setContent] = useState(note.content)
+  const [isDragging, setIsDragging] = useState(false)
+  const [position, setPosition] = useState({ x: note.position_x, y: note.position_y })
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const noteRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus()
+      textareaRef.current.select()
+    }
+  }, [isEditing])
+
+  const handleBlur = () => {
+    setIsEditing(false)
+    if (content !== note.content) {
+      onUpdate(content)
+    }
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isEditing) return
+    if ((e.target as HTMLElement).closest('button')) return
+
+    setIsDragging(true)
+    setDragStart({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y,
+    })
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) return
+
+    const newX = Math.max(0, e.clientX - dragStart.x)
+    const newY = Math.max(0, e.clientY - dragStart.y)
+    setPosition({ x: newX, y: newY })
+  }
+
+  const handleMouseUp = () => {
+    if (isDragging) {
+      setIsDragging(false)
+      onPositionChange(position.x, position.y)
+    }
+  }
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
+      }
+    }
+  }, [isDragging, dragStart])
+
+  const handleEvidenceClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (noteRef.current) {
+      onOpenEvidence(noteRef.current.getBoundingClientRect())
+    }
+  }
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isLinkMode && onLinkClick) {
+      e.stopPropagation()
+      onLinkClick()
+    }
+  }
+
+  return (
+    <div
+      ref={noteRef}
+      className={`absolute w-[100px] h-[100px] rounded-md shadow-md transition-all select-none ${
+        note.has_evidence
+          ? 'bg-green-100 border-2 border-green-300'
+          : 'bg-yellow-100 border-2 border-yellow-300'
+      } ${isDragging ? 'shadow-lg z-50' : 'hover:shadow-lg'} ${
+        isLinkMode ? 'cursor-crosshair hover:ring-2 hover:ring-purple-400' : 'cursor-move'
+      } ${isLinkSource ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
+      style={{
+        left: position.x,
+        top: position.y,
+        cursor: isEditing ? 'text' : isLinkMode ? 'crosshair' : 'move',
+      }}
+      onMouseDown={isLinkMode ? undefined : handleMouseDown}
+      onClick={handleClick}
+      onDoubleClick={() => !isLinkMode && setIsEditing(true)}
+    >
+      {/* Content */}
+      <div className="p-2 h-full flex flex-col">
+        {isEditing ? (
+          <textarea
+            ref={textareaRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onBlur={handleBlur}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setContent(note.content)
+                setIsEditing(false)
+              }
+            }}
+            className="w-full h-full bg-transparent border-none outline-none resize-none text-xs"
+            placeholder="Type here..."
+          />
+        ) : (
+          <p className="text-xs text-gray-700 overflow-hidden flex-1 leading-tight">
+            {content || <span className="italic text-gray-400">Double-click to edit</span>}
+          </p>
+        )}
+
+        {/* Bottom toolbar */}
+        <div className="flex justify-between items-center mt-auto pt-1">
+          {/* Evidence indicator/button */}
+          <button
+            onClick={handleEvidenceClick}
+            className={`text-xs flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+              note.has_evidence
+                ? 'text-green-700 bg-green-200 hover:bg-green-300'
+                : 'text-gray-500 hover:bg-gray-200'
+            }`}
+            title={note.has_evidence ? `${note.evidence.length} evidence` : 'Add evidence'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            {note.has_evidence && <span>{note.evidence.length}</span>}
+          </button>
+
+          {/* Delete button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+            className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
+            title="Delete note"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

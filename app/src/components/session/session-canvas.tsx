@@ -1,0 +1,770 @@
+'use client'
+
+import { useState, useCallback, useRef, useEffect, MouseEvent } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { StickyNote } from './sticky-note'
+import { SectionContainer } from './section-container'
+import { EvidencePopover } from './evidence-popover'
+import type { Session, Section, StickyNote as StickyNoteType, Evidence } from '@/types/database'
+
+interface SessionData extends Session {
+  templates: { name: string } | null
+  session_objectives: { id: string; content: string; order_index: number }[]
+  session_checklist_items: { id: string; content: string; is_checked: boolean; order_index: number }[]
+  session_constraints: {
+    constraint_id: string
+    constraints: { id: string; label: string; value: string | null; type: string }
+  }[]
+  sections: (Section & {
+    sticky_notes: (StickyNoteType & { evidence: Evidence[] })[]
+  })[]
+}
+
+interface SessionCanvasProps {
+  session: SessionData
+  stickyNoteLinks: { id: string; source_note_id: string; target_note_id: string }[]
+}
+
+export function SessionCanvas({ session: initialSession, stickyNoteLinks }: SessionCanvasProps) {
+  const router = useRouter()
+  const supabase = createClient()
+  const [session, setSession] = useState(initialSession)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [showChecklist, setShowChecklist] = useState(false)
+  const [showConstraints, setShowConstraints] = useState(false)
+  const [activeEvidenceNote, setActiveEvidenceNote] = useState<string | null>(null)
+  const [evidencePosition, setEvidencePosition] = useState({ x: 0, y: 0 })
+
+  // Canvas pan state
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [isPanning, setIsPanning] = useState(false)
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 })
+  const [canvasOffset, setCanvasOffset] = useState({ x: 0, y: 0 })
+  const [scale, setScale] = useState(1)
+
+  // Constraint editing
+  const [editingConstraint, setEditingConstraint] = useState<string | null>(null)
+  const [constraintValue, setConstraintValue] = useState('')
+
+  // Smart Linking state
+  const [isLinkMode, setIsLinkMode] = useState(false)
+  const [linkSource, setLinkSource] = useState<string | null>(null)
+  const [noteLinks, setNoteLinks] = useState(stickyNoteLinks)
+  const [notePositions, setNotePositions] = useState<Map<string, { x: number; y: number; sectionX: number; sectionY: number }>>(new Map())
+
+  // Canvas panning handlers
+  const handleCanvasMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+    // Only pan if clicking on the canvas itself, not on sections
+    if (e.target === canvasRef.current || (e.target as HTMLElement).classList.contains('canvas-background')) {
+      setIsPanning(true)
+      setPanStart({ x: e.clientX - canvasOffset.x, y: e.clientY - canvasOffset.y })
+    }
+  }
+
+  const handleCanvasMouseMove = useCallback((e: globalThis.MouseEvent) => {
+    if (isPanning) {
+      setCanvasOffset({
+        x: e.clientX - panStart.x,
+        y: e.clientY - panStart.y,
+      })
+    }
+  }, [isPanning, panStart])
+
+  const handleCanvasMouseUp = useCallback(() => {
+    setIsPanning(false)
+  }, [])
+
+  // Zoom with mouse wheel
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? 0.9 : 1.1
+      setScale(s => Math.min(Math.max(0.25, s * delta), 2))
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleCanvasMouseMove)
+    window.addEventListener('mouseup', handleCanvasMouseUp)
+    const canvas = canvasRef.current
+    if (canvas) {
+      canvas.addEventListener('wheel', handleWheel, { passive: false })
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleCanvasMouseMove)
+      window.removeEventListener('mouseup', handleCanvasMouseUp)
+      if (canvas) {
+        canvas.removeEventListener('wheel', handleWheel)
+      }
+    }
+  }, [handleCanvasMouseMove, handleCanvasMouseUp, handleWheel])
+
+  const handleAddSection = async () => {
+    const maxX = session.sections.reduce((max, s) => Math.max(max, s.position_x), 0)
+
+    const { data, error } = await supabase
+      .from('sections')
+      .insert({
+        session_id: session.id,
+        name: 'New Section',
+        position_x: maxX + 350,
+        position_y: 50,
+      })
+      .select()
+      .single()
+
+    if (!error && data) {
+      setSession((prev) => ({
+        ...prev,
+        sections: [...prev.sections, { ...data, sticky_notes: [] }],
+      }))
+    }
+  }
+
+  const handleUpdateSection = async (sectionId: string, name: string) => {
+    await supabase
+      .from('sections')
+      .update({ name })
+      .eq('id', sectionId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) =>
+        s.id === sectionId ? { ...s, name } : s
+      ),
+    }))
+  }
+
+  const handleDeleteSection = async (sectionId: string) => {
+    await supabase.from('sections').delete().eq('id', sectionId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.filter((s) => s.id !== sectionId),
+    }))
+  }
+
+  const handleSectionPositionChange = async (sectionId: string, x: number, y: number) => {
+    await supabase
+      .from('sections')
+      .update({ position_x: x, position_y: y })
+      .eq('id', sectionId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) =>
+        s.id === sectionId ? { ...s, position_x: x, position_y: y } : s
+      ),
+    }))
+  }
+
+  const handleSectionSizeChange = async (sectionId: string, width: number, height: number) => {
+    await supabase
+      .from('sections')
+      .update({ width, height })
+      .eq('id', sectionId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) =>
+        s.id === sectionId ? { ...s, width, height } : s
+      ),
+    }))
+  }
+
+  const handleAddNote = async (sectionId: string) => {
+    const section = session.sections.find((s) => s.id === sectionId)
+    const noteCount = section?.sticky_notes.length || 0
+    const cols = 3
+    const noteWidth = 110
+    const noteHeight = 110
+
+    const { data, error } = await supabase
+      .from('sticky_notes')
+      .insert({
+        section_id: sectionId,
+        content: '',
+        position_x: 10 + (noteCount % cols) * noteWidth,
+        position_y: 10 + Math.floor(noteCount / cols) * noteHeight,
+      })
+      .select()
+      .single()
+
+    if (!error && data) {
+      setSession((prev) => ({
+        ...prev,
+        sections: prev.sections.map((s) =>
+          s.id === sectionId
+            ? { ...s, sticky_notes: [...s.sticky_notes, { ...data, evidence: [] }] }
+            : s
+        ),
+      }))
+    }
+  }
+
+  const handleUpdateNote = async (noteId: string, content: string) => {
+    await supabase
+      .from('sticky_notes')
+      .update({ content })
+      .eq('id', noteId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) => ({
+        ...s,
+        sticky_notes: s.sticky_notes.map((n) =>
+          n.id === noteId ? { ...n, content } : n
+        ),
+      })),
+    }))
+  }
+
+  const handleDeleteNote = async (sectionId: string, noteId: string) => {
+    await supabase.from('sticky_notes').delete().eq('id', noteId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) =>
+        s.id === sectionId
+          ? { ...s, sticky_notes: s.sticky_notes.filter((n) => n.id !== noteId) }
+          : s
+      ),
+    }))
+  }
+
+  const handleNotePositionChange = async (noteId: string, sectionId: string, x: number, y: number) => {
+    await supabase
+      .from('sticky_notes')
+      .update({ position_x: x, position_y: y })
+      .eq('id', noteId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) =>
+        s.id === sectionId
+          ? {
+              ...s,
+              sticky_notes: s.sticky_notes.map((n) =>
+                n.id === noteId ? { ...n, position_x: x, position_y: y } : n
+              ),
+            }
+          : s
+      ),
+    }))
+  }
+
+  const handleOpenEvidence = (noteId: string, rect: DOMRect) => {
+    setActiveEvidenceNote(noteId)
+    setEvidencePosition({ x: rect.right + 10, y: rect.top })
+  }
+
+  const handleAddEvidence = async (noteId: string, evidence: { type: 'url' | 'text'; url?: string; content?: string; title?: string; strength?: 'high' | 'medium' | 'low' }) => {
+    const { data, error } = await supabase
+      .from('evidence')
+      .insert({
+        sticky_note_id: noteId,
+        type: evidence.type,
+        url: evidence.url,
+        content: evidence.content,
+        title: evidence.title,
+        strength: evidence.strength || 'medium',
+      })
+      .select()
+      .single()
+
+    if (!error && data) {
+      await supabase
+        .from('sticky_notes')
+        .update({ has_evidence: true })
+        .eq('id', noteId)
+
+      setSession((prev) => ({
+        ...prev,
+        sections: prev.sections.map((s) => ({
+          ...s,
+          sticky_notes: s.sticky_notes.map((n) =>
+            n.id === noteId
+              ? { ...n, evidence: [...n.evidence, data], has_evidence: true }
+              : n
+          ),
+        })),
+      }))
+    }
+  }
+
+  const handleRemoveEvidence = async (noteId: string, evidenceId: string) => {
+    await supabase.from('evidence').delete().eq('id', evidenceId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) => ({
+        ...s,
+        sticky_notes: s.sticky_notes.map((n) => {
+          if (n.id === noteId) {
+            const newEvidence = n.evidence.filter((e) => e.id !== evidenceId)
+            return { ...n, evidence: newEvidence, has_evidence: newEvidence.length > 0 }
+          }
+          return n
+        }),
+      })),
+    }))
+  }
+
+  const handleToggleChecklist = async (itemId: string, checked: boolean) => {
+    await supabase
+      .from('session_checklist_items')
+      .update({ is_checked: checked })
+      .eq('id', itemId)
+
+    setSession((prev) => ({
+      ...prev,
+      session_checklist_items: prev.session_checklist_items.map((item) =>
+        item.id === itemId ? { ...item, is_checked: checked } : item
+      ),
+    }))
+  }
+
+  const handleUpdateConstraintValue = async (constraintId: string) => {
+    await supabase
+      .from('constraints')
+      .update({ value: constraintValue })
+      .eq('id', constraintId)
+
+    setSession((prev) => ({
+      ...prev,
+      session_constraints: prev.session_constraints.map((sc) =>
+        sc.constraint_id === constraintId
+          ? { ...sc, constraints: { ...sc.constraints, value: constraintValue } }
+          : sc
+      ),
+    }))
+
+    setEditingConstraint(null)
+    setConstraintValue('')
+  }
+
+  const [showEvidenceWarning, setShowEvidenceWarning] = useState(false)
+  const [evidenceWarningMessage, setEvidenceWarningMessage] = useState('')
+
+  const handleAnalyze = async (skipEvidenceCheck = false) => {
+    setIsAnalyzing(true)
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: session.id, skipEvidenceCheck }),
+      })
+
+      if (response.ok) {
+        router.push(`/session/${session.id}/analysis`)
+      } else if (response.status === 428) {
+        // Evidence stale warning
+        const data = await response.json()
+        setEvidenceWarningMessage(data.message)
+        setShowEvidenceWarning(true)
+        setIsAnalyzing(false)
+      } else {
+        console.error('Analysis failed:', response.statusText)
+        setIsAnalyzing(false)
+      }
+    } catch (error) {
+      console.error('Analysis failed:', error)
+      setIsAnalyzing(false)
+    }
+  }
+
+  const resetView = () => {
+    setCanvasOffset({ x: 0, y: 0 })
+    setScale(1)
+  }
+
+  // Smart linking handlers
+  const handleNoteClick = async (noteId: string) => {
+    if (!isLinkMode) return
+
+    if (!linkSource) {
+      // First click - set source
+      setLinkSource(noteId)
+    } else if (linkSource !== noteId) {
+      // Second click - create link
+      const existingLink = noteLinks.find(
+        (l) =>
+          (l.source_note_id === linkSource && l.target_note_id === noteId) ||
+          (l.source_note_id === noteId && l.target_note_id === linkSource)
+      )
+
+      if (existingLink) {
+        // Remove existing link
+        await supabase.from('sticky_note_links').delete().eq('id', existingLink.id)
+        setNoteLinks((prev) => prev.filter((l) => l.id !== existingLink.id))
+      } else {
+        // Create new link
+        const { data, error } = await supabase
+          .from('sticky_note_links')
+          .insert({ source_note_id: linkSource, target_note_id: noteId })
+          .select()
+          .single()
+
+        if (!error && data) {
+          setNoteLinks((prev) => [...prev, data])
+        }
+      }
+      setLinkSource(null)
+    }
+  }
+
+  const toggleLinkMode = () => {
+    setIsLinkMode(!isLinkMode)
+    setLinkSource(null)
+  }
+
+  // Update note positions for link drawing
+  const updateNotePosition = (noteId: string, x: number, y: number, sectionX: number, sectionY: number) => {
+    setNotePositions((prev) => {
+      const newMap = new Map(prev)
+      newMap.set(noteId, { x, y, sectionX, sectionY })
+      return newMap
+    })
+  }
+
+  // Count assumptions vs evidence-backed
+  const allNotes = session.sections.flatMap((s) => s.sticky_notes)
+  const evidenceCount = allNotes.filter((n) => n.has_evidence).length
+  const assumptionCount = allNotes.filter((n) => !n.has_evidence && n.content.trim()).length
+
+  return (
+    <div className="h-screen flex flex-col bg-background">
+      {/* Top Toolbar */}
+      <header className="bg-card border-b px-4 py-2 flex justify-between items-center shrink-0 z-20">
+        <div className="flex items-center gap-4">
+          <Link href="/dashboard" className="text-muted-foreground hover:text-foreground">
+            ← Back
+          </Link>
+          <h1 className="font-semibold text-lg">{session.title}</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 mr-2 text-sm text-muted-foreground">
+            <Button variant="ghost" size="sm" onClick={() => setScale(s => Math.max(0.25, s - 0.1))}>−</Button>
+            <span className="w-12 text-center">{Math.round(scale * 100)}%</span>
+            <Button variant="ghost" size="sm" onClick={() => setScale(s => Math.min(2, s + 0.1))}>+</Button>
+            <Button variant="ghost" size="sm" onClick={resetView}>Reset</Button>
+          </div>
+          {/* Link Mode Toggle */}
+          <Button
+            variant={isLinkMode ? 'default' : 'outline'}
+            size="sm"
+            onClick={toggleLinkMode}
+            className={isLinkMode ? 'bg-purple-600 hover:bg-purple-700' : ''}
+          >
+            {isLinkMode ? '🔗 Linking...' : '🔗 Link Notes'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowChecklist(true)}>
+            Checklist
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowConstraints(true)}>
+            Constraints
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleAddSection}>
+            + Section
+          </Button>
+          <Button onClick={() => handleAnalyze()} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'Analyze Session'}
+          </Button>
+        </div>
+      </header>
+
+      {/* Objectives Bar - Compact Centered Layout */}
+      <div className="bg-primary/5 border-b border-primary/20 px-4 py-2 shrink-0 z-10">
+        <div className="flex items-center justify-center gap-4 flex-wrap">
+          {/* Label */}
+          <span className="text-xs font-semibold text-primary uppercase tracking-wide">Objectives:</span>
+
+          {/* Objectives */}
+          {session.session_objectives
+            .sort((a, b) => a.order_index - b.order_index)
+            .map((obj, i) => (
+              <div key={obj.id} className="bg-card border border-primary/30 rounded px-2 py-1 text-xs">
+                <span className="text-primary font-semibold">{i + 1}.</span> {obj.content}
+              </div>
+            ))}
+          {session.session_objectives.length === 0 && (
+            <span className="text-xs text-muted-foreground italic">No objectives defined</span>
+          )}
+
+          {/* Divider */}
+          <div className="h-4 w-px bg-border"></div>
+
+          {/* Stats */}
+          <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30 text-xs px-2 py-0.5">
+            ✓ {evidenceCount}
+          </Badge>
+          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/30 text-xs px-2 py-0.5">
+            ? {assumptionCount}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Infinite Canvas */}
+      <div
+        ref={canvasRef}
+        className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing canvas-background"
+        style={{ backgroundColor: 'var(--muted)' }}
+        onMouseDown={handleCanvasMouseDown}
+      >
+        {/* Grid pattern */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: `radial-gradient(circle, var(--border) 1px, transparent 1px)`,
+            backgroundSize: `${20 * scale}px ${20 * scale}px`,
+            backgroundPosition: `${canvasOffset.x % (20 * scale)}px ${canvasOffset.y % (20 * scale)}px`,
+          }}
+        />
+
+        {/* Canvas content */}
+        <div
+          className="absolute"
+          style={{
+            transform: `translate(${canvasOffset.x}px, ${canvasOffset.y}px) scale(${scale})`,
+            transformOrigin: '0 0',
+          }}
+        >
+          {/* SVG layer for drawing links between notes */}
+          <svg className="absolute inset-0 pointer-events-none overflow-visible" style={{ width: '10000px', height: '10000px' }}>
+            {noteLinks.map((link) => {
+              // Find the notes and their sections
+              let sourceNote = null
+              let targetNote = null
+              let sourceSection = null
+              let targetSection = null
+
+              for (const section of session.sections) {
+                const foundSource = section.sticky_notes.find(n => n.id === link.source_note_id)
+                const foundTarget = section.sticky_notes.find(n => n.id === link.target_note_id)
+                if (foundSource) { sourceNote = foundSource; sourceSection = section }
+                if (foundTarget) { targetNote = foundTarget; targetSection = section }
+              }
+
+              if (!sourceNote || !targetNote || !sourceSection || !targetSection) return null
+
+              // Calculate positions (note position + section position + center offset)
+              const x1 = sourceSection.position_x + sourceNote.position_x + 50
+              const y1 = sourceSection.position_y + sourceNote.position_y + 50 + 52 // +52 for header
+              const x2 = targetSection.position_x + targetNote.position_x + 50
+              const y2 = targetSection.position_y + targetNote.position_y + 50 + 52
+
+              return (
+                <g key={link.id}>
+                  <line
+                    x1={x1}
+                    y1={y1}
+                    x2={x2}
+                    y2={y2}
+                    stroke="#9333ea"
+                    strokeWidth="2"
+                    strokeDasharray="5,5"
+                    opacity="0.6"
+                  />
+                  {/* Arrow at midpoint */}
+                  <circle
+                    cx={(x1 + x2) / 2}
+                    cy={(y1 + y2) / 2}
+                    r="6"
+                    fill="#9333ea"
+                    opacity="0.8"
+                  />
+                </g>
+              )
+            })}
+          </svg>
+
+          {session.sections.map((section) => (
+            <SectionContainer
+              key={section.id}
+              section={section}
+              onUpdateName={(name) => handleUpdateSection(section.id, name)}
+              onDelete={() => handleDeleteSection(section.id)}
+              onAddNote={() => handleAddNote(section.id)}
+              onPositionChange={(x, y) => handleSectionPositionChange(section.id, x, y)}
+              onSizeChange={(w, h) => handleSectionSizeChange(section.id, w, h)}
+            >
+              {section.sticky_notes.map((note) => (
+                <StickyNote
+                  key={note.id}
+                  note={note}
+                  onUpdate={(content) => handleUpdateNote(note.id, content)}
+                  onDelete={() => handleDeleteNote(section.id, note.id)}
+                  onOpenEvidence={(rect) => handleOpenEvidence(note.id, rect)}
+                  onPositionChange={(x, y) => handleNotePositionChange(note.id, section.id, x, y)}
+                  isLinkMode={isLinkMode}
+                  isLinkSource={linkSource === note.id}
+                  onLinkClick={() => handleNoteClick(note.id)}
+                />
+              ))}
+            </SectionContainer>
+          ))}
+        </div>
+
+        {/* Empty state */}
+        {session.sections.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center bg-card rounded-xl p-8 shadow-lg border">
+              <p className="text-muted-foreground mb-4">No sections yet. Start by adding a section.</p>
+              <Button onClick={handleAddSection}>+ Add Section</Button>
+            </div>
+          </div>
+        )}
+
+        {/* Canvas instructions */}
+        <div className="absolute bottom-4 left-4 text-xs text-muted-foreground bg-card/80 backdrop-blur px-3 py-2 rounded-lg">
+          {isLinkMode ? (
+            <span className="text-purple-600 font-medium">
+              🔗 Link Mode: Click a note to select, then click another to link/unlink
+            </span>
+          ) : (
+            'Drag canvas to pan • Ctrl+Scroll to zoom • Drag sections to move'
+          )}
+        </div>
+
+        {/* Link mode indicator */}
+        {isLinkMode && linkSource && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg">
+            Now click another note to create a link
+          </div>
+        )}
+      </div>
+
+      {/* Evidence Popover */}
+      {activeEvidenceNote && (
+        <EvidencePopover
+          noteId={activeEvidenceNote}
+          note={allNotes.find((n) => n.id === activeEvidenceNote)!}
+          position={evidencePosition}
+          onClose={() => setActiveEvidenceNote(null)}
+          onAddEvidence={(evidence) => handleAddEvidence(activeEvidenceNote, evidence)}
+          onRemoveEvidence={(evidenceId) => handleRemoveEvidence(activeEvidenceNote, evidenceId)}
+        />
+      )}
+
+      {/* Checklist Dialog */}
+      <Dialog open={showChecklist} onOpenChange={setShowChecklist}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Session Checklist</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[400px]">
+            <div className="space-y-3">
+              {session.session_checklist_items
+                .sort((a, b) => a.order_index - b.order_index)
+                .map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted">
+                    <Checkbox
+                      checked={item.is_checked}
+                      onCheckedChange={(checked) =>
+                        handleToggleChecklist(item.id, checked as boolean)
+                      }
+                    />
+                    <span className={item.is_checked ? 'line-through text-muted-foreground' : ''}>
+                      {item.content}
+                    </span>
+                  </div>
+                ))}
+              {session.session_checklist_items.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">No checklist items</p>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Constraints Dialog - Now Editable */}
+      <Dialog open={showConstraints} onOpenChange={setShowConstraints}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Session Constraints</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[400px]">
+            <div className="space-y-3">
+              {session.session_constraints.map((sc) => (
+                <div key={sc.constraint_id} className="border rounded-lg p-4">
+                  <div className="font-medium text-sm mb-2">{sc.constraints.label}</div>
+                  {editingConstraint === sc.constraint_id ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={constraintValue}
+                        onChange={(e) => setConstraintValue(e.target.value)}
+                        placeholder="Enter value..."
+                        className="flex-1"
+                        autoFocus
+                      />
+                      <Button size="sm" onClick={() => handleUpdateConstraintValue(sc.constraint_id)}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingConstraint(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      className="text-muted-foreground cursor-pointer hover:bg-muted p-2 rounded border border-dashed border-muted-foreground/30"
+                      onClick={() => {
+                        setEditingConstraint(sc.constraint_id)
+                        setConstraintValue(sc.constraints.value || '')
+                      }}
+                    >
+                      {sc.constraints.value || (
+                        <span className="italic text-muted-foreground/50">Click to add value...</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {session.session_constraints.length === 0 && (
+                <p className="text-muted-foreground text-center py-4">No constraints applied to this session</p>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+
+      {/* Evidence Warning Dialog */}
+      <Dialog open={showEvidenceWarning} onOpenChange={setShowEvidenceWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Evidence Not Recently Fetched</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{evidenceWarningMessage}</p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => router.push('/insights')}>
+                Fetch Insights
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowEvidenceWarning(false)
+                  handleAnalyze(true)
+                }}
+              >
+                Proceed Anyway
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
