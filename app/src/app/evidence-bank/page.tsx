@@ -10,12 +10,14 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from '@/components/ui/dialog'
 import type { EvidenceBank, SourceSystem, EvidenceStrength } from '@/types/database'
 
@@ -50,9 +52,43 @@ export default function EvidenceBankPage() {
   const [addStrength, setAddStrength] = useState<EvidenceStrength>('medium')
   const [addLoading, setAddLoading] = useState(false)
 
+  // Fetch evidence state
+  const [showFetchDialog, setShowFetchDialog] = useState(false)
+  const [fetchLoading, setFetchLoading] = useState(false)
+  const [enabledSources, setEnabledSources] = useState<SourceSystem[]>([])
+  const [selectedFetchSources, setSelectedFetchSources] = useState<SourceSystem[]>([])
+  const [fetchStatus, setFetchStatus] = useState<{
+    lastFetchAt: string | null
+    n8nConfigured: boolean
+  } | null>(null)
+  const [fetchResult, setFetchResult] = useState<{
+    success: boolean
+    message: string
+    manualSetup?: boolean
+    payload?: Record<string, unknown>
+  } | null>(null)
+
   useEffect(() => {
     fetchEvidence()
+    fetchEvidenceStatus()
   }, [])
+
+  const fetchEvidenceStatus = async () => {
+    try {
+      const response = await fetch('/api/workspace/fetch-now')
+      if (response.ok) {
+        const data = await response.json()
+        setEnabledSources(data.enabledSources || [])
+        setSelectedFetchSources(data.enabledSources || [])
+        setFetchStatus({
+          lastFetchAt: data.lastFetchAt,
+          n8nConfigured: data.n8nConfigured,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to fetch evidence status:', error)
+    }
+  }
 
   const fetchEvidence = async () => {
     try {
@@ -120,6 +156,64 @@ export default function EvidenceBankPage() {
     setAddStrength('medium')
   }
 
+  const handleFetchEvidence = async () => {
+    if (selectedFetchSources.length === 0) return
+
+    setFetchLoading(true)
+    setFetchResult(null)
+
+    try {
+      const response = await fetch('/api/workspace/fetch-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: selectedFetchSources,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setFetchResult({
+          success: data.success,
+          message: data.message,
+          manualSetup: data.manualSetup,
+          payload: data.payload,
+        })
+
+        if (data.success && !data.manualSetup) {
+          // Refresh evidence list after successful fetch trigger
+          setTimeout(() => {
+            fetchEvidence()
+            setShowFetchDialog(false)
+            setFetchResult(null)
+          }, 2000)
+        }
+      } else {
+        setFetchResult({
+          success: false,
+          message: data.error || 'Failed to trigger fetch',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to fetch evidence:', error)
+      setFetchResult({
+        success: false,
+        message: 'Network error occurred',
+      })
+    } finally {
+      setFetchLoading(false)
+    }
+  }
+
+  const toggleFetchSource = (source: SourceSystem) => {
+    setSelectedFetchSources((prev) =>
+      prev.includes(source)
+        ? prev.filter((s) => s !== source)
+        : [...prev, source]
+    )
+  }
+
   const filteredEvidence = evidence.filter(e => {
     const matchesSearch = e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (e.content?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -160,6 +254,16 @@ export default function EvidenceBankPage() {
               <Link href="/insights">
                 <Button variant="outline">View Insights Feed</Button>
               </Link>
+              <Button
+                variant="outline"
+                onClick={() => setShowFetchDialog(true)}
+                className="flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Fetch Evidence
+              </Button>
               <Button onClick={() => setShowAddDialog(true)}>+ Add Evidence</Button>
             </div>
           </div>
@@ -395,6 +499,165 @@ export default function EvidenceBankPage() {
             </Button>
             <Button onClick={handleAddEvidence} disabled={!addTitle || addLoading}>
               {addLoading ? 'Adding...' : 'Add Evidence'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fetch Evidence Dialog */}
+      <Dialog open={showFetchDialog} onOpenChange={setShowFetchDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Fetch Evidence from Sources
+            </DialogTitle>
+            <DialogDescription>
+              Trigger n8n to fetch evidence from your connected integrations.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Last fetch info */}
+            {fetchStatus?.lastFetchAt && (
+              <div className="text-sm text-gray-500 bg-gray-50 rounded-lg p-3">
+                Last fetched: {new Date(fetchStatus.lastFetchAt).toLocaleString()}
+              </div>
+            )}
+
+            {/* Source selection */}
+            <div className="space-y-3">
+              <Label>Select sources to fetch from:</Label>
+              {enabledSources.length > 0 ? (
+                <div className="space-y-2">
+                  {(['slack', 'notion', 'mixpanel', 'airtable'] as const).map((source) => {
+                    const isEnabled = enabledSources.includes(source)
+                    const isSelected = selectedFetchSources.includes(source)
+                    return (
+                      <div
+                        key={source}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+                          isEnabled
+                            ? isSelected
+                              ? 'border-blue-500 bg-blue-50'
+                              : 'border-gray-200 hover:border-gray-300'
+                            : 'border-gray-100 bg-gray-50 opacity-50'
+                        }`}
+                      >
+                        <Checkbox
+                          id={`fetch-${source}`}
+                          checked={isSelected}
+                          onCheckedChange={() => isEnabled && toggleFetchSource(source)}
+                          disabled={!isEnabled}
+                        />
+                        <label
+                          htmlFor={`fetch-${source}`}
+                          className={`flex items-center gap-2 flex-1 cursor-pointer ${
+                            !isEnabled ? 'cursor-not-allowed' : ''
+                          }`}
+                        >
+                          <span className="text-lg">{SOURCE_ICONS[source]}</span>
+                          <span className="font-medium capitalize">{source}</span>
+                          {!isEnabled && (
+                            <span className="text-xs text-gray-400">(Not enabled)</span>
+                          )}
+                        </label>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-gray-500">
+                  <p>No integrations enabled.</p>
+                  <Link href="/settings/integrations" className="text-blue-600 hover:underline text-sm">
+                    Enable integrations in Settings
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* n8n configuration warning */}
+            {fetchStatus && !fetchStatus.n8nConfigured && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <div>
+                    <p className="font-medium text-yellow-800">n8n not configured</p>
+                    <p className="text-yellow-700">Set N8N_TRIGGER_URL in your environment to enable automatic fetching.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Fetch result */}
+            {fetchResult && (
+              <div className={`rounded-lg p-3 text-sm ${
+                fetchResult.success
+                  ? 'bg-green-50 border border-green-200'
+                  : 'bg-red-50 border border-red-200'
+              }`}>
+                <div className="flex items-start gap-2">
+                  {fetchResult.success ? (
+                    <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5 text-red-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  )}
+                  <div>
+                    <p className={fetchResult.success ? 'text-green-800' : 'text-red-800'}>
+                      {fetchResult.message}
+                    </p>
+                    {fetchResult.manualSetup && fetchResult.payload && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-yellow-700 hover:text-yellow-800">
+                          View payload for manual n8n setup
+                        </summary>
+                        <pre className="mt-2 bg-gray-800 text-gray-100 p-2 rounded text-xs overflow-x-auto">
+                          {JSON.stringify(fetchResult.payload, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setShowFetchDialog(false)
+              setFetchResult(null)
+            }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleFetchEvidence}
+              disabled={selectedFetchSources.length === 0 || fetchLoading}
+              className="flex items-center gap-2"
+            >
+              {fetchLoading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Fetching...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Fetch Now
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

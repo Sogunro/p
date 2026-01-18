@@ -359,6 +359,103 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const [showEvidenceWarning, setShowEvidenceWarning] = useState(false)
   const [evidenceWarningMessage, setEvidenceWarningMessage] = useState('')
 
+  // Pre-analysis dialog state
+  const [showAnalyzeDialog, setShowAnalyzeDialog] = useState(false)
+  const [analyzeWithEvidence, setAnalyzeWithEvidence] = useState(true)
+  const [isFetchingEvidence, setIsFetchingEvidence] = useState(false)
+  const [fetchEvidenceResult, setFetchEvidenceResult] = useState<{
+    success: boolean
+    message: string
+  } | null>(null)
+  const [enabledSources, setEnabledSources] = useState<string[]>([])
+  const [lastFetchAt, setLastFetchAt] = useState<string | null>(null)
+
+  // Fetch evidence status when opening analyze dialog
+  const fetchEvidenceStatus = async () => {
+    try {
+      const response = await fetch('/api/workspace/fetch-now')
+      if (response.ok) {
+        const data = await response.json()
+        setEnabledSources(data.enabledSources || [])
+        setLastFetchAt(data.lastFetchAt)
+      }
+    } catch (error) {
+      console.error('Failed to fetch evidence status:', error)
+    }
+  }
+
+  const handleOpenAnalyzeDialog = () => {
+    setShowAnalyzeDialog(true)
+    setFetchEvidenceResult(null)
+    fetchEvidenceStatus()
+  }
+
+  const handleFetchEvidenceNow = async () => {
+    setIsFetchingEvidence(true)
+    setFetchEvidenceResult(null)
+
+    try {
+      const response = await fetch('/api/workspace/fetch-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sources: enabledSources,
+          sessionId: session.id,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        setFetchEvidenceResult({
+          success: true,
+          message: data.message,
+        })
+        setLastFetchAt(new Date().toISOString())
+      } else {
+        setFetchEvidenceResult({
+          success: false,
+          message: data.error || data.message || 'Failed to fetch evidence',
+        })
+      }
+    } catch (error) {
+      console.error('Failed to fetch evidence:', error)
+      setFetchEvidenceResult({
+        success: false,
+        message: 'Network error occurred',
+      })
+    } finally {
+      setIsFetchingEvidence(false)
+    }
+  }
+
+  const handleStartAnalysis = async () => {
+    setShowAnalyzeDialog(false)
+    setIsAnalyzing(true)
+
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session.id,
+          skipEvidenceCheck: true,
+          includeEvidence: analyzeWithEvidence,
+        }),
+      })
+
+      if (response.ok) {
+        router.push(`/session/${session.id}/analysis`)
+      } else {
+        console.error('Analysis failed:', response.statusText)
+        setIsAnalyzing(false)
+      }
+    } catch (error) {
+      console.error('Analysis failed:', error)
+      setIsAnalyzing(false)
+    }
+  }
+
   const handleAnalyze = async (skipEvidenceCheck = false) => {
     setIsAnalyzing(true)
     try {
@@ -481,7 +578,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           <Button variant="outline" size="sm" onClick={handleAddSection}>
             + Section
           </Button>
-          <Button onClick={() => handleAnalyze()} disabled={isAnalyzing}>
+          <Button onClick={handleOpenAnalyzeDialog} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze Session'}
           </Button>
         </div>
@@ -762,6 +859,161 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
                 Proceed Anyway
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pre-Analysis Dialog - Choose evidence options */}
+      <Dialog open={showAnalyzeDialog} onOpenChange={setShowAnalyzeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              Analyze Session
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Evidence status */}
+            <div className="bg-muted/50 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">Evidence Status</span>
+                {lastFetchAt ? (
+                  <span className="text-xs text-muted-foreground">
+                    Last fetched: {new Date(lastFetchAt).toLocaleString()}
+                  </span>
+                ) : (
+                  <span className="text-xs text-yellow-600">Never fetched</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Enabled sources:</span>
+                {enabledSources.length > 0 ? (
+                  <div className="flex gap-1">
+                    {enabledSources.map((source) => (
+                      <Badge key={source} variant="secondary" className="text-xs">
+                        {source === 'slack' && '💬'}
+                        {source === 'notion' && '📝'}
+                        {source === 'mixpanel' && '📊'}
+                        {source === 'airtable' && '📋'}
+                        {' '}{source}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-yellow-600 text-xs">None configured</span>
+                )}
+              </div>
+            </div>
+
+            {/* Fetch evidence option */}
+            {enabledSources.length > 0 && (
+              <div className="border rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-sm">Fetch Latest Evidence</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Get the most recent insights from your connected sources
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleFetchEvidenceNow}
+                    disabled={isFetchingEvidence}
+                    className="flex items-center gap-2"
+                  >
+                    {isFetchingEvidence ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Fetching...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Fetch Now
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {fetchEvidenceResult && (
+                  <div className={`mt-3 text-sm p-2 rounded ${
+                    fetchEvidenceResult.success
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}>
+                    {fetchEvidenceResult.message}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Analysis mode selection */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium">Analysis Mode</label>
+              <div className="space-y-2">
+                <div
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    analyzeWithEvidence
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setAnalyzeWithEvidence(true)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      analyzeWithEvidence ? 'border-blue-500' : 'border-gray-300'
+                    }`}>
+                      {analyzeWithEvidence && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm">Analyze with Evidence</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Include insights from Slack, Notion, Mixpanel, and Airtable in the analysis
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                    !analyzeWithEvidence
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => setAnalyzeWithEvidence(false)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      !analyzeWithEvidence ? 'border-blue-500' : 'border-gray-300'
+                    }`}>
+                      {!analyzeWithEvidence && <div className="w-2 h-2 rounded-full bg-blue-500" />}
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-sm">Analyze without Evidence</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Analyze session content only, without external evidence
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={() => setShowAnalyzeDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleStartAnalysis} disabled={isAnalyzing}>
+              {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
