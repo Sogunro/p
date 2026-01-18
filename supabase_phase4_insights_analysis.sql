@@ -101,7 +101,8 @@ CREATE POLICY "Users can delete analyses for their workspaces" ON daily_insights
 CREATE INDEX IF NOT EXISTS idx_daily_insights_analysis_workspace ON daily_insights_analysis(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_daily_insights_analysis_date ON daily_insights_analysis(analysis_date DESC);
 CREATE INDEX IF NOT EXISTS idx_insights_feed_analysis ON insights_feed(analysis_id);
-CREATE INDEX IF NOT EXISTS idx_insights_feed_fetched_date ON insights_feed(DATE(fetched_at));
+-- Index on fetched_at directly (the function-based index DATE(fetched_at) requires IMMUTABLE)
+CREATE INDEX IF NOT EXISTS idx_insights_feed_fetched_at ON insights_feed(fetched_at);
 
 -- ============================================
 -- COMMENTS
