@@ -93,5 +93,44 @@ COMMENT ON COLUMN workspace_invites.max_uses IS 'NULL means unlimited uses';
 COMMENT ON COLUMN workspace_invites.use_count IS 'How many times this invite has been used';
 
 -- ============================================
+-- TROUBLESHOOTING: RLS CIRCULAR DEPENDENCY FIX
+-- ============================================
+--
+-- ISSUE: workspace_members table returned 404/empty results even with valid data.
+--
+-- ROOT CAUSE: The original RLS policy for workspace_members created a circular
+-- dependency - it checked workspace_members to authorize reading workspace_members:
+--
+--   CREATE POLICY "..." ON workspace_members FOR SELECT USING (
+--     workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid())
+--   );
+--
+-- This causes infinite recursion because Supabase can't read the table to check
+-- if you're allowed to read the table.
+--
+-- FIX: Create a SECURITY DEFINER function that bypasses RLS to get user's workspaces,
+-- then use that function in the policy:
+--
+--   CREATE OR REPLACE FUNCTION get_user_workspace_ids(user_uuid UUID)
+--   RETURNS SETOF UUID
+--   LANGUAGE SQL
+--   SECURITY DEFINER
+--   STABLE
+--   AS $$
+--     SELECT workspace_id FROM workspace_members WHERE user_id = user_uuid;
+--   $$;
+--
+--   CREATE POLICY "Users can view workspace members" ON workspace_members
+--     FOR SELECT USING (
+--       user_id = auth.uid()
+--       OR
+--       workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
+--     );
+--
+-- The SECURITY DEFINER keyword makes the function run with the privileges of
+-- the function owner (postgres), bypassing RLS and breaking the circular reference.
+-- ============================================
+
+-- ============================================
 -- DONE!
 -- ============================================

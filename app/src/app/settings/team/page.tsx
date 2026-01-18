@@ -59,8 +59,10 @@ export default function TeamSettingsPage() {
         setCurrentUserId(data.currentUserId)
         setCurrentUserRole(data.currentUserRole || 'member')
       } else {
-        const error = await membersRes.json()
-        console.error('Members API error:', error)
+        const errorData = await membersRes.json()
+        console.error('Members API error:', membersRes.status, errorData)
+        // Show error to user
+        alert(`Error: ${errorData.error || 'Failed to load team data'} (Status: ${membersRes.status})`)
       }
 
       if (invitesRes.ok) {

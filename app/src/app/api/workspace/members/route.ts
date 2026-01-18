@@ -3,51 +3,80 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // GET: List workspace members
 export async function GET() {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
 
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (authError) {
+      console.error('Auth error:', authError)
+      return NextResponse.json({ error: 'Authentication error', details: authError.message }, { status: 401 })
+    }
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized - no user found' }, { status: 401 })
+    }
+
+    // First, check if the user_id exists in workspace_members at all
+    // Use a direct query that should work with any RLS policy
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('workspace_id, role')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (membershipError) {
+      console.error('Membership query error:', membershipError)
+      return NextResponse.json({
+        error: 'Database error while finding workspace',
+        details: membershipError.message,
+        code: membershipError.code,
+        userId: user.id
+      }, { status: 500 })
+    }
+
+    if (!membership) {
+      return NextResponse.json({
+        error: 'No workspace membership found',
+        userId: user.id,
+        hint: 'User needs to be added to a workspace'
+      }, { status: 404 })
+    }
+
+    // Get all members with profile info
+    const { data: members, error } = await supabase
+      .from('workspace_members')
+      .select('id, user_id, role, joined_at, profiles(full_name, email)')
+      .eq('workspace_id', membership.workspace_id)
+      .order('joined_at', { ascending: true })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Get workspace info
+    const { data: workspace } = await supabase
+      .from('workspaces')
+      .select('id, name')
+      .eq('id', membership.workspace_id)
+      .single()
+
+    return NextResponse.json({
+      members,
+      workspace,
+      currentUserId: user.id,
+      currentUserRole: membership.role,
+    })
+  } catch (err) {
+    console.error('Unexpected error in members API:', err)
+    return NextResponse.json({
+      error: 'Internal server error',
+      details: err instanceof Error ? err.message : 'Unknown error'
+    }, { status: 500 })
   }
-
-  // Get user's workspace
-  const { data: membership } = await supabase
-    .from('workspace_members')
-    .select('workspace_id, role')
-    .eq('user_id', user.id)
-    .single()
-
-  if (!membership) {
-    return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
-  }
-
-  // Get all members with profile info
-  const { data: members, error } = await supabase
-    .from('workspace_members')
-    .select('id, user_id, role, joined_at, profiles(full_name, email)')
-    .eq('workspace_id', membership.workspace_id)
-    .order('joined_at', { ascending: true })
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  // Get workspace info
-  const { data: workspace } = await supabase
-    .from('workspaces')
-    .select('id, name')
-    .eq('id', membership.workspace_id)
-    .single()
-
-  return NextResponse.json({
-    members,
-    workspace,
-    currentUserId: user.id,
-    currentUserRole: membership.role,
-  })
 }
 
 // DELETE: Remove member from workspace (owner/admin only)
