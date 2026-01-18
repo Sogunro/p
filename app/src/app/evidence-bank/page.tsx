@@ -166,6 +166,49 @@ export default function EvidenceBankPage() {
         </div>
       </header>
 
+      {/* Source Tabs */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex gap-1 overflow-x-auto">
+            {[
+              { value: 'all', label: 'All', icon: '📚' },
+              { value: 'manual', label: 'Manual', icon: '✏️' },
+              { value: 'slack', label: 'Slack', icon: '💬' },
+              { value: 'notion', label: 'Notion', icon: '📝' },
+              { value: 'mixpanel', label: 'Mixpanel', icon: '📊' },
+              { value: 'airtable', label: 'Airtable', icon: '📋' },
+            ].map((tab) => {
+              const count = tab.value === 'all'
+                ? evidence.length
+                : evidence.filter(e => e.source_system === tab.value).length
+              return (
+                <button
+                  key={tab.value}
+                  onClick={() => setFilterSource(tab.value as SourceSystem | 'all')}
+                  className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
+                    filterSource === tab.value
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  {count > 0 && (
+                    <span className={`px-1.5 py-0.5 rounded text-xs ${
+                      filterSource === tab.value
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Filters */}
@@ -177,18 +220,6 @@ export default function EvidenceBankPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <select
-            className="border rounded-md px-3 py-2 text-sm"
-            value={filterSource}
-            onChange={(e) => setFilterSource(e.target.value as SourceSystem | 'all')}
-          >
-            <option value="all">All Sources</option>
-            <option value="manual">Manual</option>
-            <option value="slack">Slack</option>
-            <option value="notion">Notion</option>
-            <option value="mixpanel">Mixpanel</option>
-            <option value="airtable">Airtable</option>
-          </select>
           <select
             className="border rounded-md px-3 py-2 text-sm"
             value={filterStrength}

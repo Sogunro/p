@@ -591,6 +591,57 @@ export interface Database {
           updated_at?: string
         }
       }
+      // Phase 4: Daily Insights Analysis
+      daily_insights_analysis: {
+        Row: {
+          id: string
+          workspace_id: string
+          analysis_date: string
+          insight_count: number
+          sources_included: string[]
+          summary: string | null
+          themes: Json | null
+          patterns: Json | null
+          priorities: Json | null
+          cross_source_connections: Json | null
+          action_items: Json | null
+          raw_response: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          analysis_date: string
+          insight_count?: number
+          sources_included?: string[]
+          summary?: string | null
+          themes?: Json | null
+          patterns?: Json | null
+          priorities?: Json | null
+          cross_source_connections?: Json | null
+          action_items?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          analysis_date?: string
+          insight_count?: number
+          sources_included?: string[]
+          summary?: string | null
+          themes?: Json | null
+          patterns?: Json | null
+          priorities?: Json | null
+          cross_source_connections?: Json | null
+          action_items?: Json | null
+          raw_response?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       // Phase 3: Team Collaboration
       workspace_invites: {
         Row: {
@@ -664,3 +715,49 @@ export type EvidenceStrength = 'high' | 'medium' | 'low'
 // Phase 3: Team Collaboration types
 export type WorkspaceInvite = Database['public']['Tables']['workspace_invites']['Row']
 export type WorkspaceRole = 'owner' | 'admin' | 'member'
+
+// Phase 4: Daily Insights Analysis types
+export type DailyInsightsAnalysis = Database['public']['Tables']['daily_insights_analysis']['Row']
+
+// Structured types for AI analysis results
+export interface InsightTheme {
+  theme: string
+  count: number
+  sources: SourceSystem[]
+  examples: string[]
+}
+
+export interface InsightPattern {
+  pattern: string
+  trend: 'increasing' | 'stable' | 'new'
+  related_themes: string[]
+}
+
+export interface InsightPriority {
+  insight_id: string
+  title: string
+  priority_score: number
+  reason: string
+}
+
+export interface CrossSourceConnection {
+  sources: SourceSystem[]
+  connection: string
+  insight_ids: string[]
+}
+
+export interface ActionItem {
+  action: string
+  urgency: 'high' | 'medium' | 'low'
+  related_insights: string[]
+}
+
+// Parsed analysis result type
+export interface ParsedDailyAnalysis {
+  summary: string
+  themes: InsightTheme[]
+  patterns: InsightPattern[]
+  priorities: InsightPriority[]
+  cross_source_connections: CrossSourceConnection[]
+  action_items: ActionItem[]
+}
