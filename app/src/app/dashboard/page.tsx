@@ -69,6 +69,11 @@ export default async function DashboardPage() {
                   Insights
                 </Button>
               </Link>
+              <Link href="/settings/team">
+                <Button variant="ghost" size="sm">
+                  Team
+                </Button>
+              </Link>
               <Link href="/settings/constraints">
                 <Button variant="ghost" size="sm">
                   Settings

@@ -591,6 +591,45 @@ export interface Database {
           updated_at?: string
         }
       }
+      // Phase 3: Team Collaboration
+      workspace_invites: {
+        Row: {
+          id: string
+          workspace_id: string
+          invite_code: string
+          created_by: string | null
+          role: 'admin' | 'member'
+          expires_at: string | null
+          max_uses: number | null
+          use_count: number
+          is_active: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          invite_code: string
+          created_by?: string | null
+          role?: 'admin' | 'member'
+          expires_at?: string | null
+          max_uses?: number | null
+          use_count?: number
+          is_active?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          invite_code?: string
+          created_by?: string | null
+          role?: 'admin' | 'member'
+          expires_at?: string | null
+          max_uses?: number | null
+          use_count?: number
+          is_active?: boolean
+          created_at?: string
+        }
+      }
     }
   }
 }
@@ -621,3 +660,7 @@ export type WorkspaceSettings = Database['public']['Tables']['workspace_settings
 // Source system type for reuse
 export type SourceSystem = 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
 export type EvidenceStrength = 'high' | 'medium' | 'low'
+
+// Phase 3: Team Collaboration types
+export type WorkspaceInvite = Database['public']['Tables']['workspace_invites']['Row']
+export type WorkspaceRole = 'owner' | 'admin' | 'member'
