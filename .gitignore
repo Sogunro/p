@@ -1,1 +1,12 @@
 /.vscode
+
+# Internal documentation (private)
+INTERNAL_MANUAL.md
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# SQL files with sensitive data
+*.sql.backup
