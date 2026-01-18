@@ -53,15 +53,23 @@ export default function TeamSettingsPage() {
 
       if (membersRes.ok) {
         const data = await membersRes.json()
+        console.log('Members API response:', data)
         setMembers(data.members || [])
         setWorkspace(data.workspace)
         setCurrentUserId(data.currentUserId)
-        setCurrentUserRole(data.currentUserRole)
+        setCurrentUserRole(data.currentUserRole || 'member')
+      } else {
+        const error = await membersRes.json()
+        console.error('Members API error:', error)
       }
 
       if (invitesRes.ok) {
         const data = await invitesRes.json()
+        console.log('Invites API response:', data)
         setInvites(data.invites || [])
+      } else {
+        // Invites API might fail if table doesn't exist yet
+        console.log('Invites API not available (run Phase 3 migration)')
       }
     } catch (error) {
       console.error('Failed to fetch team data:', error)
@@ -203,112 +211,120 @@ export default function TeamSettingsPage() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
         {/* Invite Links */}
-        {canCreateInvites && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Invite Team Members</CardTitle>
-              <CardDescription>
-                Create invite links to share with your team. Anyone with the link can join your workspace.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Create new invite form */}
-              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                <h4 className="font-medium">Create New Invite Link</h4>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="invite-role">Role</Label>
-                    <select
-                      id="invite-role"
-                      className="w-full border rounded-md px-3 py-2 text-sm"
-                      value={newInviteRole}
-                      onChange={(e) => setNewInviteRole(e.target.value as 'admin' | 'member')}
-                    >
-                      <option value="member">Member</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="invite-uses">Max Uses (optional)</Label>
-                    <Input
-                      id="invite-uses"
-                      type="number"
-                      min="1"
-                      placeholder="Unlimited"
-                      value={newInviteMaxUses}
-                      onChange={(e) => setNewInviteMaxUses(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="invite-expiry">Expires (optional)</Label>
-                    <Input
-                      id="invite-expiry"
-                      type="date"
-                      value={newInviteExpiry}
-                      onChange={(e) => setNewInviteExpiry(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <Button onClick={createInvite} disabled={creating}>
-                  {creating ? 'Creating...' : 'Create Invite Link'}
-                </Button>
-              </div>
-
-              {/* Active invites */}
-              {invites.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm text-gray-600">Active Invite Links</h4>
-                  {invites.map((invite) => (
-                    <div
-                      key={invite.id}
-                      className="flex items-center justify-between p-3 bg-white border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono">
-                          {invite.invite_code}
-                        </code>
-                        <Badge className={getRoleBadgeColor(invite.role as WorkspaceRole)}>
-                          {invite.role}
-                        </Badge>
-                        <span className="text-sm text-gray-500">
-                          {invite.use_count} / {invite.max_uses || '∞'} uses
-                        </span>
-                        {invite.expires_at && (
-                          <span className="text-sm text-gray-500">
-                            Expires: {new Date(invite.expires_at).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyInviteLink(invite.invite_code)}
-                        >
-                          {copiedCode === invite.invite_code ? 'Copied!' : 'Copy Link'}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          onClick={() => deactivateInvite(invite.id)}
-                        >
-                          Deactivate
-                        </Button>
-                      </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Invite Team Members</CardTitle>
+            <CardDescription>
+              {canCreateInvites
+                ? 'Create invite links to share with your team. Anyone with the link can join your workspace.'
+                : 'Only owners and admins can create invite links.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {canCreateInvites ? (
+              <>
+                {/* Create new invite form */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+                  <h4 className="font-medium">Create New Invite Link</h4>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-role">Role</Label>
+                      <select
+                        id="invite-role"
+                        className="w-full border rounded-md px-3 py-2 text-sm"
+                        value={newInviteRole}
+                        onChange={(e) => setNewInviteRole(e.target.value as 'admin' | 'member')}
+                      >
+                        <option value="member">Member</option>
+                        <option value="admin">Admin</option>
+                      </select>
                     </div>
-                  ))}
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-uses">Max Uses (optional)</Label>
+                      <Input
+                        id="invite-uses"
+                        type="number"
+                        min="1"
+                        placeholder="Unlimited"
+                        value={newInviteMaxUses}
+                        onChange={(e) => setNewInviteMaxUses(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="invite-expiry">Expires (optional)</Label>
+                      <Input
+                        id="invite-expiry"
+                        type="date"
+                        value={newInviteExpiry}
+                        onChange={(e) => setNewInviteExpiry(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={createInvite} disabled={creating}>
+                    {creating ? 'Creating...' : 'Create Invite Link'}
+                  </Button>
                 </div>
-              )}
 
-              {invites.length === 0 && (
-                <p className="text-sm text-gray-500 text-center py-4">
-                  No active invite links. Create one above to invite team members.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        )}
+                {/* Active invites */}
+                {invites.length > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="font-medium text-sm text-gray-600">Active Invite Links</h4>
+                    {invites.map((invite) => (
+                      <div
+                        key={invite.id}
+                        className="flex items-center justify-between p-3 bg-white border rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <code className="bg-gray-100 px-2 py-1 rounded text-sm font-mono">
+                            {invite.invite_code}
+                          </code>
+                          <Badge className={getRoleBadgeColor(invite.role as WorkspaceRole)}>
+                            {invite.role}
+                          </Badge>
+                          <span className="text-sm text-gray-500">
+                            {invite.use_count} / {invite.max_uses || '∞'} uses
+                          </span>
+                          {invite.expires_at && (
+                            <span className="text-sm text-gray-500">
+                              Expires: {new Date(invite.expires_at).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => copyInviteLink(invite.invite_code)}
+                          >
+                            {copiedCode === invite.invite_code ? 'Copied!' : 'Copy Link'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => deactivateInvite(invite.id)}
+                          >
+                            Deactivate
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {invites.length === 0 && (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No active invite links. Create one above to invite team members.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 text-center py-4">
+                Contact your workspace owner or admin to get an invite link.
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Team Members */}
         <Card>
