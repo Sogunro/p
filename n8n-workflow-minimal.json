@@ -1,0 +1,219 @@
+{
+  "name": "Evidence Fetcher - Product Discovery",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "evidence-fetch",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 400],
+      "id": "webhook-1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Route based on mode\nconst input = $input.first().json;\nconst mode = input.mode || 'time_window';\n\nreturn [{\n  json: {\n    ...input,\n    routing: mode\n  }\n}];"
+      },
+      "name": "Check Mode",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 400],
+      "id": "check-mode"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-link",
+              "leftValue": "={{ $json.routing }}",
+              "rightValue": "link",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF Link Mode",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [750, 400],
+      "id": "if-link"
+    },
+    {
+      "parameters": {
+        "jsCode": "// LINK MODE: Extract ID from URL\nconst input = $input.first().json;\nconst url = input.url || '';\n\nlet source = 'unknown';\nlet extractedId = null;\n\nif (url.includes('notion')) {\n  source = 'notion';\n  const match = url.match(/([a-f0-9]{32})/i);\n  extractedId = match ? match[1] : null;\n} else if (url.includes('slack')) {\n  source = 'slack';\n  const match = url.match(/archives\\/([A-Z0-9]+)/i);\n  extractedId = match ? match[1] : null;\n} else if (url.includes('airtable')) {\n  source = 'airtable';\n  const match = url.match(/(rec[a-zA-Z0-9]+)/i);\n  extractedId = match ? match[1] : null;\n}\n\nreturn [{\n  json: {\n    workspace_id: input.workspace_id,\n    mode: 'link',\n    source: source,\n    extracted_id: extractedId,\n    original_url: url,\n    callback_url: input.callback_url\n  }\n}];"
+      },
+      "name": "Extract Link ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 250],
+      "id": "extract-link"
+    },
+    {
+      "parameters": {
+        "jsCode": "// TIME WINDOW MODE: Calculate date range and prepare for fetching\nconst input = $input.first().json;\nconst lookbackHours = input.lookback_hours || 24;\n\nconst now = new Date();\nconst startTime = new Date(now.getTime() - (lookbackHours * 60 * 60 * 1000));\n\nreturn [{\n  json: {\n    workspace_id: input.workspace_id,\n    mode: 'time_window',\n    lookback_hours: lookbackHours,\n    iso_date: startTime.toISOString(),\n    unix_timestamp: Math.floor(startTime.getTime() / 1000),\n    sources: input.sources || ['slack', 'notion', 'airtable', 'mixpanel'],\n    callback_url: input.callback_url\n  }\n}];"
+      },
+      "name": "Calculate Time Range",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 550],
+      "id": "calc-time"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Placeholder: Fetch from Notion API\n// TODO: Add Notion credentials and real API call\nconst input = $input.first().json;\n\nreturn [{\n  json: {\n    source: 'notion',\n    items: [{\n      title: 'Notion Placeholder',\n      content: 'Configure Notion credentials to fetch real data',\n      url: 'https://notion.so',\n      fetched_at: new Date().toISOString()\n    }],\n    ...input\n  }\n}];"
+      },
+      "name": "Fetch Notion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 400],
+      "id": "fetch-notion"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Placeholder: Fetch from Slack API\n// TODO: Add Slack credentials and real API call\nconst input = $input.first().json;\n\nreturn [{\n  json: {\n    source: 'slack',\n    items: [{\n      title: 'Slack Placeholder',\n      content: 'Configure Slack credentials to fetch real data',\n      url: 'https://slack.com',\n      fetched_at: new Date().toISOString()\n    }],\n    ...input\n  }\n}];"
+      },
+      "name": "Fetch Slack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 550],
+      "id": "fetch-slack"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Placeholder: Fetch from Airtable API\n// TODO: Add Airtable credentials and real API call\nconst input = $input.first().json;\n\nreturn [{\n  json: {\n    source: 'airtable',\n    items: [{\n      title: 'Airtable Placeholder',\n      content: 'Configure Airtable credentials to fetch real data',\n      url: 'https://airtable.com',\n      fetched_at: new Date().toISOString()\n    }],\n    ...input\n  }\n}];"
+      },
+      "name": "Fetch Airtable",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 700],
+      "id": "fetch-airtable"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Placeholder: Fetch from Mixpanel API\n// TODO: Add Mixpanel credentials and real API call\nconst input = $input.first().json;\n\nreturn [{\n  json: {\n    source: 'mixpanel',\n    items: [{\n      title: 'Mixpanel Placeholder',\n      content: 'Configure Mixpanel credentials to fetch real data',\n      url: 'https://mixpanel.com',\n      fetched_at: new Date().toISOString()\n    }],\n    ...input\n  }\n}];"
+      },
+      "name": "Fetch Mixpanel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 850],
+      "id": "fetch-mixpanel"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all results from different sources\nconst items = $input.all();\nconst allResults = [];\n\nfor (const item of items) {\n  const data = item.json;\n  if (data.items && Array.isArray(data.items)) {\n    allResults.push(...data.items.map(i => ({\n      ...i,\n      source: data.source\n    })));\n  }\n}\n\nconst firstItem = items[0]?.json || {};\n\nreturn [{\n  json: {\n    workspace_id: firstItem.workspace_id,\n    mode: firstItem.mode,\n    total_items: allResults.length,\n    items: allResults,\n    callback_url: firstItem.callback_url\n  }\n}];"
+      },
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 550],
+      "id": "merge-results"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callback_url || 'https://pm-product-tool.vercel.app/api/webhook/insights' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-webhook-secret",
+              "value": "pdt-evidence-secret-2026"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workspace_id: $json.workspace_id, source_system: 'multi', mode: $json.mode, items: $json.items }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "name": "Send to App",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1750, 400],
+      "id": "send-to-app"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: 'completed',\n    message: 'Evidence fetch completed',\n    items_count: $input.first().json.items?.length || 0\n  }\n}];"
+      },
+      "name": "Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 400],
+      "id": "response"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Check Mode", "type": "main", "index": 0 }]]
+    },
+    "Check Mode": {
+      "main": [[{ "node": "IF Link Mode", "type": "main", "index": 0 }]]
+    },
+    "IF Link Mode": {
+      "main": [
+        [{ "node": "Extract Link ID", "type": "main", "index": 0 }],
+        [{ "node": "Calculate Time Range", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Link ID": {
+      "main": [[{ "node": "Send to App", "type": "main", "index": 0 }]]
+    },
+    "Calculate Time Range": {
+      "main": [
+        [
+          { "node": "Fetch Notion", "type": "main", "index": 0 },
+          { "node": "Fetch Slack", "type": "main", "index": 0 },
+          { "node": "Fetch Airtable", "type": "main", "index": 0 },
+          { "node": "Fetch Mixpanel", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Notion": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 0 }]]
+    },
+    "Fetch Slack": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 0 }]]
+    },
+    "Fetch Airtable": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 0 }]]
+    },
+    "Fetch Mixpanel": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 0 }]]
+    },
+    "Merge Results": {
+      "main": [[{ "node": "Send to App", "type": "main", "index": 0 }]]
+    },
+    "Send to App": {
+      "main": [[{ "node": "Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

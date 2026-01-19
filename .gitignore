@@ -10,3 +10,10 @@ INTERNAL_MANUAL.md
 
 # SQL files with sensitive data
 *.sql.backup
+
+# n8n workflow iterations (keep only n8n-workflow-minimal.json)
+n8n-workflow-*.json
+!n8n-workflow-minimal.json
+
+# Windows reserved filename issue
+nul

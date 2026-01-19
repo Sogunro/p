@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(n8n-mcp-tools-expert)",
+      "Skill(n8n-mcp-tools-expert:*)"
+    ]
+  }
+}
