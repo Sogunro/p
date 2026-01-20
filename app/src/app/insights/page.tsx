@@ -249,11 +249,11 @@ export default function InsightsFeedPage() {
               <Link href="/evidence-bank">
                 <Button variant="outline">View Evidence Bank</Button>
               </Link>
-              <Link href="/settings/evidence-sources">
-                <Button variant="outline">Evidence Sources</Button>
+              <Link href="/settings/insights-schedule">
+                <Button variant="outline">📅 Schedule</Button>
               </Link>
-              <Link href="/settings/integrations">
-                <Button variant="outline">Settings</Button>
+              <Link href="/settings/evidence-sources">
+                <Button variant="outline">Configure Sources</Button>
               </Link>
             </div>
           </div>

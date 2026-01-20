@@ -155,6 +155,37 @@ async function handleAIAnalyzedPayload(
     return NextResponse.json({ error: 'Failed to insert insights' }, { status: 500 })
   }
 
+  // Also add individual insights to Evidence Bank for sticky note referencing
+  const evidenceBankItems = insights.map((insight) => ({
+    workspace_id,
+    title: insight.title,
+    type: insight.source_url ? 'url' : 'text',
+    url: insight.source_url || null,
+    content: insight.description || null,
+    strength: insight.strength === 'strong' ? 'high' : insight.strength === 'weak' ? 'low' : 'medium',
+    source_system: insight.source,
+    source_metadata: {
+      pain_points: insight.pain_points || [],
+      feature_requests: insight.feature_requests || [],
+      sentiment: insight.sentiment || null,
+      key_quotes: insight.key_quotes || [],
+      tags: insight.tags || [],
+      from_insights_feed: true,
+      analysis_date: analysisDate,
+    },
+    created_by: null, // System-created, no user
+  }))
+
+  const { data: bankInserted, error: bankError } = await supabase
+    .from('evidence_bank')
+    .insert(evidenceBankItems)
+    .select()
+
+  if (bankError) {
+    console.error('Error adding insights to evidence bank:', bankError)
+    // Don't fail the whole request, just log the error
+  }
+
   // Update last_fetch_at in workspace settings
   await supabase
     .from('workspace_settings')
@@ -165,9 +196,10 @@ async function handleAIAnalyzedPayload(
     success: true,
     format: 'ai_analyzed',
     inserted: inserted?.length || 0,
+    added_to_bank: bankInserted?.length || 0,
     analysis_id: analysis?.id || null,
     sources: sourcesIncluded,
-    message: `Successfully added ${inserted?.length || 0} AI-analyzed insights`
+    message: `Successfully added ${inserted?.length || 0} AI-analyzed insights (${bankInserted?.length || 0} to Evidence Bank)`
   })
 }
 

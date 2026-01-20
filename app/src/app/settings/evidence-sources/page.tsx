@@ -20,9 +20,6 @@ interface SourceConfig {
   airtable_sources: AirtableSourceConfig[]
   airtable_links: string[] // Store original links for display
   mixpanel_enabled: boolean
-  auto_fetch_enabled: boolean
-  auto_fetch_time: string
-  lookback_hours: number
 }
 
 const DEFAULT_CONFIG: SourceConfig = {
@@ -36,9 +33,6 @@ const DEFAULT_CONFIG: SourceConfig = {
   airtable_sources: [],
   airtable_links: [],
   mixpanel_enabled: false,
-  auto_fetch_enabled: false,
-  auto_fetch_time: '18:00',
-  lookback_hours: 24,
 }
 
 // Helper functions to extract IDs from links
@@ -102,10 +96,8 @@ export default function EvidenceSourcesPage() {
   const [config, setConfig] = useState<SourceConfig>(DEFAULT_CONFIG)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [fetching, setFetching] = useState(false)
-  const [fetchResult, setFetchResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [saveResult, setSaveResult] = useState<{ success: boolean; message: string } | null>(null)
   const [role, setRole] = useState<string>('')
-  const [lastFetchAt, setLastFetchAt] = useState<string | null>(null)
 
   // Form state for adding new items
   const [newSlackLink, setNewSlackLink] = useState('')
@@ -124,10 +116,7 @@ export default function EvidenceSourcesPage() {
 
   const fetchConfig = async () => {
     try {
-      const [configResponse, statusResponse] = await Promise.all([
-        fetch('/api/workspace/evidence-sources'),
-        fetch('/api/workspace/fetch-now')
-      ])
+      const configResponse = await fetch('/api/workspace/evidence-sources')
 
       if (configResponse.ok) {
         const data = await configResponse.json()
@@ -142,16 +131,8 @@ export default function EvidenceSourcesPage() {
           airtable_sources: data.config.airtable_sources || [],
           airtable_links: data.config.airtable_links || [],
           mixpanel_enabled: data.config.mixpanel_enabled ?? false,
-          auto_fetch_enabled: data.config.auto_fetch_enabled ?? false,
-          auto_fetch_time: data.config.auto_fetch_time || '18:00',
-          lookback_hours: data.config.lookback_hours || 24,
         })
         setRole(data.role)
-      }
-
-      if (statusResponse.ok) {
-        const statusData = await statusResponse.json()
-        setLastFetchAt(statusData.lastFetchAt)
       }
     } catch (error) {
       console.error('Failed to fetch config:', error)
@@ -173,54 +154,14 @@ export default function EvidenceSourcesPage() {
         const data = await response.json()
         alert(data.error || 'Failed to save')
       } else {
-        setFetchResult({ success: true, message: 'Configuration saved successfully!' })
-        setTimeout(() => setFetchResult(null), 3000)
+        setSaveResult({ success: true, message: 'Configuration saved successfully!' })
+        setTimeout(() => setSaveResult(null), 3000)
       }
     } catch (error) {
       console.error('Failed to save config:', error)
       alert('Failed to save configuration')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleFetchNow = async () => {
-    // First save the configuration
-    await handleSave()
-
-    setFetching(true)
-    setFetchResult(null)
-    try {
-      const response = await fetch('/api/workspace/fetch-now', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lookback_hours: config.lookback_hours
-        }),
-      })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        setFetchResult({
-          success: true,
-          message: data.message || `Fetch triggered! Sources: ${data.sourcesFetching?.join(', ') || 'all enabled'}`
-        })
-        setLastFetchAt(new Date().toISOString())
-      } else {
-        setFetchResult({
-          success: false,
-          message: data.error || data.message || 'Failed to trigger fetch'
-        })
-      }
-    } catch (error) {
-      console.error('Fetch error:', error)
-      setFetchResult({
-        success: false,
-        message: 'Failed to connect to fetch service'
-      })
-    } finally {
-      setFetching(false)
     }
   }
 
@@ -332,8 +273,12 @@ export default function EvidenceSourcesPage() {
   }
 
   const canEdit = role === 'owner' || role === 'admin'
-  const hasEnabledSources = config.slack_enabled || config.notion_enabled ||
-                           config.airtable_enabled || config.mixpanel_enabled
+  const enabledSourceCount = [
+    config.slack_enabled,
+    config.notion_enabled,
+    config.airtable_enabled,
+    config.mixpanel_enabled
+  ].filter(Boolean).length
 
   if (loading) {
     return (
@@ -357,18 +302,9 @@ export default function EvidenceSourcesPage() {
             </div>
             <div className="flex items-center gap-2">
               {canEdit && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={handleFetchNow}
-                    disabled={fetching || !hasEnabledSources}
-                  >
-                    {fetching ? 'Fetching...' : 'Fetch Now'}
-                  </Button>
-                  <Button onClick={handleSave} disabled={saving}>
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </Button>
-                </>
+                <Button onClick={handleSave} disabled={saving}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </Button>
               )}
             </div>
           </div>
@@ -377,11 +313,11 @@ export default function EvidenceSourcesPage() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        {/* Fetch Result Alert */}
-        {fetchResult && (
-          <div className={`p-4 rounded-lg ${fetchResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
-            <p className={fetchResult.success ? 'text-green-800' : 'text-red-800'}>
-              {fetchResult.message}
+        {/* Save Result Alert */}
+        {saveResult && (
+          <div className={`p-4 rounded-lg ${saveResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+            <p className={saveResult.success ? 'text-green-800' : 'text-red-800'}>
+              {saveResult.message}
             </p>
           </div>
         )}
@@ -394,95 +330,28 @@ export default function EvidenceSourcesPage() {
           </div>
         )}
 
-        {/* Fetch Status */}
+        {/* Summary Card */}
         <Card>
           <CardHeader>
-            <CardTitle>Fetch Status</CardTitle>
+            <CardTitle>Source Configuration</CardTitle>
             <CardDescription>
-              Trigger evidence fetching from your configured sources
+              Configure which sources to fetch insights from. To schedule or run analysis, go to{' '}
+              <Link href="/settings/insights-schedule" className="text-blue-600 hover:underline">
+                Insights Schedule
+              </Link>.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium">Last fetched:</p>
-                <p className="text-sm text-gray-500">
-                  {lastFetchAt
-                    ? new Date(lastFetchAt).toLocaleString()
-                    : 'Never'}
-                </p>
+                <p className="text-2xl font-bold">{enabledSourceCount}</p>
+                <p className="text-sm text-gray-500">sources enabled</p>
               </div>
-              {canEdit && (
-                <Button
-                  onClick={handleFetchNow}
-                  disabled={fetching || !hasEnabledSources}
-                  size="lg"
-                >
-                  {fetching ? (
-                    <>
-                      <span className="animate-spin mr-2">⏳</span>
-                      Fetching Evidence...
-                    </>
-                  ) : (
-                    <>
-                      🔄 Fetch Evidence Now
-                    </>
-                  )}
+              <Link href="/settings/insights-schedule">
+                <Button variant="outline">
+                  📅 Schedule Analysis
                 </Button>
-              )}
-            </div>
-            {!hasEnabledSources && (
-              <p className="text-sm text-amber-600">
-                Enable at least one source below to start fetching evidence.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Fetch Schedule */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Auto-Fetch Schedule</CardTitle>
-            <CardDescription>
-              Configure automatic daily evidence fetching
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="auto_fetch_enabled"
-                checked={config.auto_fetch_enabled}
-                onChange={(e) => setConfig({ ...config, auto_fetch_enabled: e.target.checked })}
-                disabled={!canEdit}
-                className="h-4 w-4"
-              />
-              <Label htmlFor="auto_fetch_enabled">Enable automatic daily fetch</Label>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="auto_fetch_time">Fetch Time</Label>
-                <Input
-                  id="auto_fetch_time"
-                  type="time"
-                  value={config.auto_fetch_time}
-                  onChange={(e) => setConfig({ ...config, auto_fetch_time: e.target.value })}
-                  disabled={!canEdit || !config.auto_fetch_enabled}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lookback_hours">Lookback Period (hours)</Label>
-                <Input
-                  id="lookback_hours"
-                  type="number"
-                  min="1"
-                  max="168"
-                  value={config.lookback_hours}
-                  onChange={(e) => setConfig({ ...config, lookback_hours: parseInt(e.target.value) || 24 })}
-                  disabled={!canEdit}
-                />
-              </div>
+              </Link>
             </div>
           </CardContent>
         </Card>
@@ -771,13 +640,13 @@ export default function EvidenceSourcesPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-gray-600">
             <p>
-              When you click <strong>Fetch Now</strong> or the auto-fetch runs:
+              Configure which sources to fetch insights from:
             </p>
             <ol className="list-decimal list-inside space-y-1">
-              <li>Only enabled sources with configured links are fetched</li>
-              <li>The n8n workflow fetches data from each source</li>
-              <li>AI analyzes the evidence to extract insights</li>
-              <li>Insights are saved to your workspace and visible in the Insights Feed</li>
+              <li>Enable each source you want to use (Slack, Notion, Airtable, Mixpanel)</li>
+              <li>Add links to the specific channels, databases, or tables to monitor</li>
+              <li>Go to <Link href="/settings/insights-schedule" className="text-blue-600 hover:underline">Insights Schedule</Link> to run or schedule analysis</li>
+              <li>AI-analyzed insights will appear in your <Link href="/insights" className="text-blue-600 hover:underline">Insights Feed</Link></li>
             </ol>
             <div className="mt-4 p-3 bg-blue-50 rounded-lg">
               <p className="text-blue-800 text-sm">
