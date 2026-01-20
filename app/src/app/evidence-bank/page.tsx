@@ -254,6 +254,9 @@ export default function EvidenceBankPage() {
               <Link href="/insights">
                 <Button variant="outline">View Insights Feed</Button>
               </Link>
+              <Link href="/settings/evidence-sources">
+                <Button variant="outline">Configure Sources</Button>
+              </Link>
               <Button
                 variant="outline"
                 onClick={() => setShowFetchDialog(true)}
@@ -326,13 +329,25 @@ export default function EvidenceBankPage() {
           </div>
           <select
             className="border rounded-md px-3 py-2 text-sm"
+            value={filterSource}
+            onChange={(e) => setFilterSource(e.target.value as SourceSystem | 'all')}
+          >
+            <option value="all">📚 All Sources</option>
+            <option value="manual">✏️ Manual</option>
+            <option value="slack">💬 Slack</option>
+            <option value="notion">📝 Notion</option>
+            <option value="mixpanel">📊 Mixpanel</option>
+            <option value="airtable">📋 Airtable</option>
+          </select>
+          <select
+            className="border rounded-md px-3 py-2 text-sm"
             value={filterStrength}
             onChange={(e) => setFilterStrength(e.target.value as EvidenceStrength | 'all')}
           >
             <option value="all">All Strengths</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
+            <option value="high">🟢 High</option>
+            <option value="medium">🟡 Medium</option>
+            <option value="low">🔴 Low</option>
           </select>
         </div>
 
