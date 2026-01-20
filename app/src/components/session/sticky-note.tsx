@@ -102,8 +102,8 @@ export function StickyNote({
       ref={noteRef}
       className={`absolute w-[100px] h-[100px] rounded-md shadow-md transition-all select-none ${
         note.has_evidence
-          ? 'bg-green-100 border-2 border-green-300'
-          : 'bg-yellow-100 border-2 border-yellow-300'
+          ? 'bg-green-50 border-2 border-green-400'
+          : 'bg-yellow-50 border-2 border-yellow-400'
       } ${isDragging ? 'shadow-lg z-50' : 'hover:shadow-lg'} ${
         isLinkMode ? 'cursor-crosshair hover:ring-2 hover:ring-purple-400' : 'cursor-move'
       } ${isLinkSource ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
@@ -116,8 +116,17 @@ export function StickyNote({
       onClick={handleClick}
       onDoubleClick={() => !isLinkMode && setIsEditing(true)}
     >
+      {/* Type Label */}
+      <div className={`absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wide ${
+        note.has_evidence
+          ? 'bg-green-500 text-white'
+          : 'bg-yellow-500 text-white'
+      }`}>
+        {note.has_evidence ? 'Evidence' : 'Assumption'}
+      </div>
+
       {/* Content */}
-      <div className="p-2 h-full flex flex-col">
+      <div className="p-2 pt-3 h-full flex flex-col">
         {isEditing ? (
           <textarea
             ref={textareaRef}

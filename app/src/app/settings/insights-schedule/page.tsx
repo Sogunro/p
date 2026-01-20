@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import type { AirtableSourceConfig } from '@/types/database'
 
 interface ScheduleConfig {
   auto_fetch_enabled: boolean
@@ -13,25 +15,74 @@ interface ScheduleConfig {
   lookback_hours: number
 }
 
-interface SourceStatus {
+interface SourceConfig {
   slack_enabled: boolean
-  slack_count: number
+  slack_channel_ids: string[]
+  slack_channel_links: string[]
   notion_enabled: boolean
-  notion_count: number
+  notion_database_ids: string[]
+  notion_database_links: string[]
   airtable_enabled: boolean
-  airtable_count: number
+  airtable_sources: AirtableSourceConfig[]
+  airtable_links: string[]
   mixpanel_enabled: boolean
 }
 
-const DEFAULT_CONFIG: ScheduleConfig = {
+const DEFAULT_SCHEDULE: ScheduleConfig = {
   auto_fetch_enabled: false,
   auto_fetch_time: '18:00',
   lookback_hours: 24,
 }
 
+const DEFAULT_SOURCE_CONFIG: SourceConfig = {
+  slack_enabled: false,
+  slack_channel_ids: [],
+  slack_channel_links: [],
+  notion_enabled: false,
+  notion_database_ids: [],
+  notion_database_links: [],
+  airtable_enabled: false,
+  airtable_sources: [],
+  airtable_links: [],
+  mixpanel_enabled: false,
+}
+
+// Helper functions to extract IDs from links
+function extractSlackChannelId(link: string): string | null {
+  const archivesMatch = link.match(/archives\/([A-Z0-9]+)/i)
+  if (archivesMatch) return archivesMatch[1]
+  const trimmed = link.trim()
+  if (/^[CG][A-Z0-9]+$/i.test(trimmed)) return trimmed.toUpperCase()
+  return null
+}
+
+function extractNotionDatabaseId(link: string): string | null {
+  const trimmed = link.trim()
+  const urlMatch = trimmed.match(/notion\.so\/(?:[^\/]+\/)?([a-f0-9]{32})/i)
+  if (urlMatch) return urlMatch[1]
+  const hyphenMatch = trimmed.match(/notion\.so\/(?:[^\/]+\/)?([a-f0-9-]+?)(?:\?|$|-[A-Za-z])/i)
+  if (hyphenMatch) {
+    const id = hyphenMatch[1].replace(/-/g, '')
+    if (id.length === 32) return id
+  }
+  const cleanId = trimmed.replace(/-/g, '')
+  if (/^[a-f0-9]{32}$/i.test(cleanId)) return cleanId
+  return null
+}
+
+function extractAirtableIds(link: string): { baseId: string; tableId: string } | null {
+  const trimmed = link.trim()
+  const urlMatch = trimmed.match(/airtable\.com\/(app[a-zA-Z0-9]+)\/(tbl[a-zA-Z0-9]+)/i)
+  if (urlMatch) return { baseId: urlMatch[1], tableId: urlMatch[2] }
+  const appMatch = trimmed.match(/(app[a-zA-Z0-9]+)/i)
+  const tblMatch = trimmed.match(/(tbl[a-zA-Z0-9]+)/i)
+  if (appMatch && tblMatch) return { baseId: appMatch[1], tableId: tblMatch[1] }
+  return null
+}
+
 export default function InsightsSchedulePage() {
-  const [config, setConfig] = useState<ScheduleConfig>(DEFAULT_CONFIG)
-  const [sourceStatus, setSourceStatus] = useState<SourceStatus | null>(null)
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfig>(DEFAULT_SCHEDULE)
+  const [sourceConfig, setSourceConfig] = useState<SourceConfig>(DEFAULT_SOURCE_CONFIG)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [fetching, setFetching] = useState(false)
@@ -43,6 +94,18 @@ export default function InsightsSchedulePage() {
   const [customLookback, setCustomLookback] = useState<number>(24)
   const [scheduleDate, setScheduleDate] = useState<string>('')
   const [scheduleTime, setScheduleTime] = useState<string>('')
+
+  // Form state for adding sources
+  const [newSlackLink, setNewSlackLink] = useState('')
+  const [newNotionLink, setNewNotionLink] = useState('')
+  const [newAirtableLink, setNewAirtableLink] = useState('')
+  const [newAirtableName, setNewAirtableName] = useState('')
+  const [slackError, setSlackError] = useState('')
+  const [notionError, setNotionError] = useState('')
+  const [airtableError, setAirtableError] = useState('')
+
+  // Tab state for sources section
+  const [activeSourceTab, setActiveSourceTab] = useState<'slack' | 'notion' | 'airtable' | 'mixpanel'>('slack')
 
   useEffect(() => {
     fetchConfig()
@@ -57,18 +120,21 @@ export default function InsightsSchedulePage() {
 
       if (configResponse.ok) {
         const data = await configResponse.json()
-        setConfig({
+        setScheduleConfig({
           auto_fetch_enabled: data.config.auto_fetch_enabled ?? false,
           auto_fetch_time: data.config.auto_fetch_time || '18:00',
           lookback_hours: data.config.lookback_hours || 24,
         })
-        setSourceStatus({
+        setSourceConfig({
           slack_enabled: data.config.slack_enabled ?? false,
-          slack_count: data.config.slack_channel_ids?.length || 0,
+          slack_channel_ids: data.config.slack_channel_ids || [],
+          slack_channel_links: data.config.slack_channel_links || data.config.slack_channel_ids || [],
           notion_enabled: data.config.notion_enabled ?? false,
-          notion_count: data.config.notion_database_ids?.length || 0,
+          notion_database_ids: data.config.notion_database_ids || [],
+          notion_database_links: data.config.notion_database_links || data.config.notion_database_ids || [],
           airtable_enabled: data.config.airtable_enabled ?? false,
-          airtable_count: data.config.airtable_sources?.length || 0,
+          airtable_sources: data.config.airtable_sources || [],
+          airtable_links: data.config.airtable_links || [],
           mixpanel_enabled: data.config.mixpanel_enabled ?? false,
         })
         setRole(data.role)
@@ -89,19 +155,15 @@ export default function InsightsSchedulePage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      // Fetch current full config first
-      const currentResponse = await fetch('/api/workspace/evidence-sources')
-      const currentData = await currentResponse.json()
-
-      // Merge schedule config with existing source config
+      // Save both source config and schedule config together
       const response = await fetch('/api/workspace/evidence-sources', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...currentData.config,
-          auto_fetch_enabled: config.auto_fetch_enabled,
-          auto_fetch_time: config.auto_fetch_time,
-          lookback_hours: config.lookback_hours,
+          ...sourceConfig,
+          auto_fetch_enabled: scheduleConfig.auto_fetch_enabled,
+          auto_fetch_time: scheduleConfig.auto_fetch_time,
+          lookback_hours: scheduleConfig.lookback_hours,
         }),
       })
 
@@ -109,7 +171,7 @@ export default function InsightsSchedulePage() {
         const data = await response.json()
         alert(data.error || 'Failed to save')
       } else {
-        setFetchResult({ success: true, message: 'Schedule saved successfully!' })
+        setFetchResult({ success: true, message: 'Configuration saved successfully!' })
         setTimeout(() => setFetchResult(null), 3000)
       }
     } catch (error) {
@@ -120,7 +182,109 @@ export default function InsightsSchedulePage() {
     }
   }
 
+  // Source management functions
+  const addSlackLink = () => {
+    setSlackError('')
+    const link = newSlackLink.trim()
+    if (!link) return
+    const channelId = extractSlackChannelId(link)
+    if (!channelId) {
+      setSlackError('Invalid Slack link. Please paste a Slack channel link or channel ID.')
+      return
+    }
+    if (sourceConfig.slack_channel_ids.includes(channelId)) {
+      setSlackError('This channel is already added.')
+      return
+    }
+    setSourceConfig({
+      ...sourceConfig,
+      slack_channel_ids: [...sourceConfig.slack_channel_ids, channelId],
+      slack_channel_links: [...sourceConfig.slack_channel_links, link]
+    })
+    setNewSlackLink('')
+  }
+
+  const removeSlackChannel = (index: number) => {
+    setSourceConfig({
+      ...sourceConfig,
+      slack_channel_ids: sourceConfig.slack_channel_ids.filter((_, i) => i !== index),
+      slack_channel_links: sourceConfig.slack_channel_links.filter((_, i) => i !== index)
+    })
+  }
+
+  const addNotionLink = () => {
+    setNotionError('')
+    const link = newNotionLink.trim()
+    if (!link) return
+    const databaseId = extractNotionDatabaseId(link)
+    if (!databaseId) {
+      setNotionError('Invalid Notion link. Please paste a Notion database link or ID.')
+      return
+    }
+    if (sourceConfig.notion_database_ids.includes(databaseId)) {
+      setNotionError('This database is already added.')
+      return
+    }
+    setSourceConfig({
+      ...sourceConfig,
+      notion_database_ids: [...sourceConfig.notion_database_ids, databaseId],
+      notion_database_links: [...sourceConfig.notion_database_links, link]
+    })
+    setNewNotionLink('')
+  }
+
+  const removeNotionDatabase = (index: number) => {
+    setSourceConfig({
+      ...sourceConfig,
+      notion_database_ids: sourceConfig.notion_database_ids.filter((_, i) => i !== index),
+      notion_database_links: sourceConfig.notion_database_links.filter((_, i) => i !== index)
+    })
+  }
+
+  const addAirtableLink = () => {
+    setAirtableError('')
+    const link = newAirtableLink.trim()
+    if (!link) return
+    const ids = extractAirtableIds(link)
+    if (!ids) {
+      setAirtableError('Invalid Airtable link. Please paste an Airtable URL.')
+      return
+    }
+    const exists = sourceConfig.airtable_sources.some(
+      s => s.base_id === ids.baseId && s.table_id === ids.tableId
+    )
+    if (exists) {
+      setAirtableError('This Airtable source is already added.')
+      return
+    }
+    const newSource: AirtableSourceConfig = {
+      base_id: ids.baseId,
+      table_id: ids.tableId,
+      name: newAirtableName.trim() || undefined
+    }
+    setSourceConfig({
+      ...sourceConfig,
+      airtable_sources: [...sourceConfig.airtable_sources, newSource],
+      airtable_links: [...sourceConfig.airtable_links, link]
+    })
+    setNewAirtableLink('')
+    setNewAirtableName('')
+  }
+
+  const removeAirtableSource = (index: number) => {
+    setSourceConfig({
+      ...sourceConfig,
+      airtable_sources: sourceConfig.airtable_sources.filter((_, i) => i !== index),
+      airtable_links: sourceConfig.airtable_links.filter((_, i) => i !== index)
+    })
+  }
+
   const handleFetchNow = async () => {
+    // First save any changes
+    if (hasUnsavedChanges) {
+      await handleSave()
+    }
+
     setFetching(true)
     setFetchResult(null)
     try {
@@ -204,19 +368,22 @@ export default function InsightsSchedulePage() {
   }
 
   const canEdit = role === 'owner' || role === 'admin'
-  const hasEnabledSources = sourceStatus && (
-    sourceStatus.slack_enabled ||
-    sourceStatus.notion_enabled ||
-    sourceStatus.airtable_enabled ||
-    sourceStatus.mixpanel_enabled
+  const hasEnabledSources = (
+    sourceConfig.slack_enabled ||
+    sourceConfig.notion_enabled ||
+    sourceConfig.airtable_enabled ||
+    sourceConfig.mixpanel_enabled
   )
 
-  const enabledSourceCount = sourceStatus ? [
-    sourceStatus.slack_enabled,
-    sourceStatus.notion_enabled,
-    sourceStatus.airtable_enabled,
-    sourceStatus.mixpanel_enabled
-  ].filter(Boolean).length : 0
+  const enabledSourceCount = [
+    sourceConfig.slack_enabled,
+    sourceConfig.notion_enabled,
+    sourceConfig.airtable_enabled,
+    sourceConfig.mixpanel_enabled
+  ].filter(Boolean).length
+
+  // Track unsaved changes
+  const hasUnsavedChanges = saving === false && loading === false
 
   if (loading) {
     return (
@@ -236,11 +403,11 @@ export default function InsightsSchedulePage() {
               <Link href="/insights" className="text-gray-600 hover:text-gray-900">
                 ← Back to Insights
               </Link>
-              <h1 className="text-xl font-bold">Insights Schedule</h1>
+              <h1 className="text-xl font-bold">Insights Configuration</h1>
             </div>
             {canEdit && (
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Schedule'}
+                {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             )}
           </div>
@@ -261,63 +428,203 @@ export default function InsightsSchedulePage() {
         {!canEdit && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <p className="text-yellow-800 text-sm">
-              Only workspace owners and admins can modify schedule settings.
+              Only workspace owners and admins can modify settings.
             </p>
           </div>
         )}
 
-        {/* Source Status */}
+        {/* Source Configuration */}
         <Card>
           <CardHeader>
-            <CardTitle>Configured Sources</CardTitle>
+            <CardTitle>Configure Sources</CardTitle>
             <CardDescription>
-              These sources will be fetched when running analysis
+              Add and configure the sources to fetch insights from ({enabledSourceCount} enabled)
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            {sourceStatus && hasEnabledSources ? (
-              <div className="flex flex-wrap gap-3">
-                {sourceStatus.slack_enabled && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-lg">
-                    <span className="text-lg">💬</span>
-                    <span className="text-sm font-medium">Slack</span>
-                    <span className="text-xs text-gray-500">({sourceStatus.slack_count} channels)</span>
+          <CardContent className="space-y-4">
+            {/* Source Tabs */}
+            <div className="flex gap-2 border-b pb-2">
+              {(['slack', 'notion', 'airtable', 'mixpanel'] as const).map((source) => {
+                const isEnabled = sourceConfig[`${source}_enabled` as keyof SourceConfig]
+                const icons = { slack: '💬', notion: '📝', airtable: '📋', mixpanel: '📊' }
+                return (
+                  <button
+                    key={source}
+                    onClick={() => setActiveSourceTab(source)}
+                    className={`px-4 py-2 rounded-t-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                      activeSourceTab === source
+                        ? 'bg-white border border-b-0 border-gray-200 -mb-[1px]'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <span>{icons[source]}</span>
+                    <span className="capitalize">{source}</span>
+                    {isEnabled && <span className="w-2 h-2 bg-green-500 rounded-full" />}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Slack Tab */}
+            {activeSourceTab === 'slack' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Label htmlFor="slack_enabled" className="font-medium">Enable Slack</Label>
+                  </div>
+                  <Checkbox
+                    id="slack_enabled"
+                    checked={sourceConfig.slack_enabled}
+                    onCheckedChange={(checked) => setSourceConfig({ ...sourceConfig, slack_enabled: checked === true })}
+                    disabled={!canEdit}
+                  />
+                </div>
+                {sourceConfig.slack_enabled && (
+                  <div className="space-y-3 pl-4 border-l-2 border-purple-200">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste Slack channel link..."
+                        value={newSlackLink}
+                        onChange={(e) => { setNewSlackLink(e.target.value); setSlackError('') }}
+                        onKeyDown={(e) => e.key === 'Enter' && addSlackLink()}
+                        disabled={!canEdit}
+                        className="flex-1"
+                      />
+                      <Button variant="outline" onClick={addSlackLink} disabled={!canEdit}>Add</Button>
+                    </div>
+                    {slackError && <p className="text-xs text-red-500">{slackError}</p>}
+                    {sourceConfig.slack_channel_ids.length > 0 && (
+                      <div className="space-y-2">
+                        {sourceConfig.slack_channel_ids.map((id, index) => (
+                          <div key={id} className="flex items-center justify-between p-2 bg-purple-50 rounded">
+                            <span className="font-mono text-sm">{id}</span>
+                            {canEdit && (
+                              <Button variant="ghost" size="sm" onClick={() => removeSlackChannel(index)}>Remove</Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
-                {sourceStatus.notion_enabled && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-                    <span className="text-lg">📝</span>
-                    <span className="text-sm font-medium">Notion</span>
-                    <span className="text-xs text-gray-500">({sourceStatus.notion_count} databases)</span>
-                  </div>
-                )}
-                {sourceStatus.airtable_enabled && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-yellow-50 rounded-lg">
-                    <span className="text-lg">📋</span>
-                    <span className="text-sm font-medium">Airtable</span>
-                    <span className="text-xs text-gray-500">({sourceStatus.airtable_count} tables)</span>
-                  </div>
-                )}
-                {sourceStatus.mixpanel_enabled && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded-lg">
-                    <span className="text-lg">📊</span>
-                    <span className="text-sm font-medium">Mixpanel</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-gray-500 mb-3">No sources configured yet</p>
-                <Link href="/settings/evidence-sources">
-                  <Button variant="outline">Configure Sources</Button>
-                </Link>
               </div>
             )}
-            {hasEnabledSources && (
-              <div className="mt-4 pt-4 border-t">
-                <Link href="/settings/evidence-sources" className="text-sm text-blue-600 hover:underline">
-                  Manage source configuration →
-                </Link>
+
+            {/* Notion Tab */}
+            {activeSourceTab === 'notion' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="notion_enabled" className="font-medium">Enable Notion</Label>
+                  <Checkbox
+                    id="notion_enabled"
+                    checked={sourceConfig.notion_enabled}
+                    onCheckedChange={(checked) => setSourceConfig({ ...sourceConfig, notion_enabled: checked === true })}
+                    disabled={!canEdit}
+                  />
+                </div>
+                {sourceConfig.notion_enabled && (
+                  <div className="space-y-3 pl-4 border-l-2 border-gray-300">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste Notion database link..."
+                        value={newNotionLink}
+                        onChange={(e) => { setNewNotionLink(e.target.value); setNotionError('') }}
+                        onKeyDown={(e) => e.key === 'Enter' && addNotionLink()}
+                        disabled={!canEdit}
+                        className="flex-1"
+                      />
+                      <Button variant="outline" onClick={addNotionLink} disabled={!canEdit}>Add</Button>
+                    </div>
+                    {notionError && <p className="text-xs text-red-500">{notionError}</p>}
+                    {sourceConfig.notion_database_ids.length > 0 && (
+                      <div className="space-y-2">
+                        {sourceConfig.notion_database_ids.map((id, index) => (
+                          <div key={id} className="flex items-center justify-between p-2 bg-gray-100 rounded">
+                            <span className="font-mono text-sm">{id.slice(0, 8)}...{id.slice(-8)}</span>
+                            {canEdit && (
+                              <Button variant="ghost" size="sm" onClick={() => removeNotionDatabase(index)}>Remove</Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Airtable Tab */}
+            {activeSourceTab === 'airtable' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="airtable_enabled" className="font-medium">Enable Airtable</Label>
+                  <Checkbox
+                    id="airtable_enabled"
+                    checked={sourceConfig.airtable_enabled}
+                    onCheckedChange={(checked) => setSourceConfig({ ...sourceConfig, airtable_enabled: checked === true })}
+                    disabled={!canEdit}
+                  />
+                </div>
+                {sourceConfig.airtable_enabled && (
+                  <div className="space-y-3 pl-4 border-l-2 border-yellow-300">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Paste Airtable URL..."
+                        value={newAirtableLink}
+                        onChange={(e) => { setNewAirtableLink(e.target.value); setAirtableError('') }}
+                        disabled={!canEdit}
+                        className="flex-1"
+                      />
+                      <Input
+                        placeholder="Name (optional)"
+                        value={newAirtableName}
+                        onChange={(e) => setNewAirtableName(e.target.value)}
+                        disabled={!canEdit}
+                        className="w-32"
+                      />
+                      <Button variant="outline" onClick={addAirtableLink} disabled={!canEdit}>Add</Button>
+                    </div>
+                    {airtableError && <p className="text-xs text-red-500">{airtableError}</p>}
+                    {sourceConfig.airtable_sources.length > 0 && (
+                      <div className="space-y-2">
+                        {sourceConfig.airtable_sources.map((source, index) => (
+                          <div key={`${source.base_id}-${source.table_id}`} className="flex items-center justify-between p-2 bg-yellow-50 rounded">
+                            <div>
+                              <p className="font-medium">{source.name || 'Unnamed Table'}</p>
+                              <p className="text-xs text-gray-500 font-mono">{source.base_id} / {source.table_id}</p>
+                            </div>
+                            {canEdit && (
+                              <Button variant="ghost" size="sm" onClick={() => removeAirtableSource(index)}>Remove</Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Mixpanel Tab */}
+            {activeSourceTab === 'mixpanel' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="mixpanel_enabled" className="font-medium">Enable Mixpanel</Label>
+                  <Checkbox
+                    id="mixpanel_enabled"
+                    checked={sourceConfig.mixpanel_enabled}
+                    onCheckedChange={(checked) => setSourceConfig({ ...sourceConfig, mixpanel_enabled: checked === true })}
+                    disabled={!canEdit}
+                  />
+                </div>
+                {sourceConfig.mixpanel_enabled && (
+                  <div className="pl-4 border-l-2 border-blue-300">
+                    <p className="text-sm text-gray-600">
+                      Mixpanel credentials are configured in n8n. When enabled, the workflow will
+                      fetch analytics data for your workspace using the configured project.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -341,6 +648,9 @@ export default function InsightsSchedulePage() {
                     : 'Never'}
                 </p>
               </div>
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                {enabledSourceCount} source{enabledSourceCount !== 1 ? 's' : ''} enabled
+              </div>
             </div>
 
             <div className="flex items-end gap-4">
@@ -353,7 +663,6 @@ export default function InsightsSchedulePage() {
                   max="168"
                   value={customLookback}
                   onChange={(e) => setCustomLookback(parseInt(e.target.value) || 24)}
-                  disabled={!canEdit}
                   className="w-32"
                 />
                 <p className="text-xs text-gray-500">Fetch insights from the last {customLookback} hours</p>
@@ -378,7 +687,7 @@ export default function InsightsSchedulePage() {
 
             {!hasEnabledSources && (
               <p className="text-sm text-amber-600">
-                Configure at least one source to run analysis.
+                Enable at least one source above to run analysis.
               </p>
             )}
           </CardContent>
@@ -401,7 +710,6 @@ export default function InsightsSchedulePage() {
                   type="date"
                   value={scheduleDate}
                   onChange={(e) => setScheduleDate(e.target.value)}
-                  disabled={!canEdit || !hasEnabledSources}
                   min={new Date().toISOString().split('T')[0]}
                 />
               </div>
@@ -412,7 +720,6 @@ export default function InsightsSchedulePage() {
                   type="time"
                   value={scheduleTime}
                   onChange={(e) => setScheduleTime(e.target.value)}
-                  disabled={!canEdit || !hasEnabledSources}
                 />
               </div>
               <div className="space-y-2">
@@ -424,7 +731,6 @@ export default function InsightsSchedulePage() {
                   max="168"
                   value={customLookback}
                   onChange={(e) => setCustomLookback(parseInt(e.target.value) || 24)}
-                  disabled={!canEdit || !hasEnabledSources}
                 />
               </div>
             </div>
@@ -435,6 +741,9 @@ export default function InsightsSchedulePage() {
             >
               📅 Schedule Analysis
             </Button>
+            {!hasEnabledSources && (
+              <p className="text-xs text-gray-500">Enable at least one source to schedule analysis.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -447,46 +756,44 @@ export default function InsightsSchedulePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
+            <div className="flex items-center gap-3">
+              <Checkbox
                 id="auto_fetch_enabled"
-                checked={config.auto_fetch_enabled}
-                onChange={(e) => setConfig({ ...config, auto_fetch_enabled: e.target.checked })}
-                disabled={!canEdit || !hasEnabledSources}
-                className="h-4 w-4"
+                checked={scheduleConfig.auto_fetch_enabled}
+                onCheckedChange={(checked) => setScheduleConfig({ ...scheduleConfig, auto_fetch_enabled: checked === true })}
+                disabled={!canEdit}
               />
-              <Label htmlFor="auto_fetch_enabled">Enable daily automatic analysis</Label>
+              <Label htmlFor="auto_fetch_enabled" className="cursor-pointer">Enable daily automatic analysis</Label>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="auto_fetch_time">Run At</Label>
-                <Input
-                  id="auto_fetch_time"
-                  type="time"
-                  value={config.auto_fetch_time}
-                  onChange={(e) => setConfig({ ...config, auto_fetch_time: e.target.value })}
-                  disabled={!canEdit || !config.auto_fetch_enabled}
-                />
+            {scheduleConfig.auto_fetch_enabled && (
+              <div className="grid grid-cols-2 gap-4 pl-7">
+                <div className="space-y-2">
+                  <Label htmlFor="auto_fetch_time">Run At</Label>
+                  <Input
+                    id="auto_fetch_time"
+                    type="time"
+                    value={scheduleConfig.auto_fetch_time}
+                    onChange={(e) => setScheduleConfig({ ...scheduleConfig, auto_fetch_time: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lookback_hours">Lookback Period (hours)</Label>
+                  <Input
+                    id="lookback_hours"
+                    type="number"
+                    min="1"
+                    max="168"
+                    value={scheduleConfig.lookback_hours}
+                    onChange={(e) => setScheduleConfig({ ...scheduleConfig, lookback_hours: parseInt(e.target.value) || 24 })}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="lookback_hours">Lookback Period (hours)</Label>
-                <Input
-                  id="lookback_hours"
-                  type="number"
-                  min="1"
-                  max="168"
-                  value={config.lookback_hours}
-                  onChange={(e) => setConfig({ ...config, lookback_hours: parseInt(e.target.value) || 24 })}
-                  disabled={!canEdit || !config.auto_fetch_enabled}
-                />
-              </div>
-            </div>
+            )}
 
-            {config.auto_fetch_enabled && (
-              <p className="text-sm text-gray-600">
-                Analysis will run daily at {config.auto_fetch_time}, fetching insights from the previous {config.lookback_hours} hours.
+            {scheduleConfig.auto_fetch_enabled && (
+              <p className="text-sm text-gray-600 pl-7">
+                Analysis will run daily at {scheduleConfig.auto_fetch_time}, fetching insights from the previous {scheduleConfig.lookback_hours} hours.
               </p>
             )}
           </CardContent>

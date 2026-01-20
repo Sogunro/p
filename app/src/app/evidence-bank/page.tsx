@@ -19,7 +19,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
-import type { EvidenceBank, SourceSystem, EvidenceStrength } from '@/types/database'
+import type { EvidenceBank, SourceSystem, EvidenceStrength, InsightsFeed } from '@/types/database'
 
 const SOURCE_ICONS: Record<SourceSystem, string> = {
   manual: '✏️',
@@ -50,6 +50,7 @@ export default function EvidenceBankPage() {
   const [addUrl, setAddUrl] = useState('')
   const [addContent, setAddContent] = useState('')
   const [addStrength, setAddStrength] = useState<EvidenceStrength>('medium')
+  const [addSource, setAddSource] = useState<SourceSystem>('manual')
   const [addLoading, setAddLoading] = useState(false)
 
   // Fetch evidence state
@@ -68,10 +69,66 @@ export default function EvidenceBankPage() {
     payload?: Record<string, unknown>
   } | null>(null)
 
+  // Pending insights (not yet added to evidence bank)
+  const [pendingInsights, setPendingInsights] = useState<InsightsFeed[]>([])
+  const [showPendingSection, setShowPendingSection] = useState(true)
+
   useEffect(() => {
     fetchEvidence()
     fetchEvidenceStatus()
+    fetchPendingInsights()
   }, [])
+
+  const fetchPendingInsights = async () => {
+    try {
+      const response = await fetch('/api/insights-feed')
+      if (response.ok) {
+        const data = await response.json()
+        setPendingInsights(data.insights || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch pending insights:', error)
+    }
+  }
+
+  const handleAddInsightToBank = async (insight: InsightsFeed, strength: EvidenceStrength = 'medium') => {
+    try {
+      const response = await fetch('/api/insights-feed/add-to-bank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          insightId: insight.id,
+          strength,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Add to evidence list
+        setEvidence([data.evidence, ...evidence])
+        // Remove from pending
+        setPendingInsights(pendingInsights.filter(i => i.id !== insight.id))
+      }
+    } catch (error) {
+      console.error('Failed to add insight to bank:', error)
+    }
+  }
+
+  const handleDismissInsight = async (insightId: string) => {
+    try {
+      const response = await fetch('/api/insights-feed/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ insightId }),
+      })
+
+      if (response.ok) {
+        setPendingInsights(pendingInsights.filter(i => i.id !== insightId))
+      }
+    } catch (error) {
+      console.error('Failed to dismiss insight:', error)
+    }
+  }
 
   const fetchEvidenceStatus = async () => {
     try {
@@ -118,6 +175,7 @@ export default function EvidenceBankPage() {
           url: addType === 'url' ? addUrl : undefined,
           content: addType === 'text' ? addContent : undefined,
           strength: addStrength,
+          source_system: addSource,
         }),
       })
 
@@ -154,6 +212,7 @@ export default function EvidenceBankPage() {
     setAddUrl('')
     setAddContent('')
     setAddStrength('medium')
+    setAddSource('manual')
   }
 
   const handleFetchEvidence = async () => {
@@ -254,7 +313,7 @@ export default function EvidenceBankPage() {
               <Link href="/insights">
                 <Button variant="outline">View Insights Feed</Button>
               </Link>
-              <Link href="/settings/evidence-sources">
+              <Link href="/settings/insights-schedule">
                 <Button variant="outline">Configure Sources</Button>
               </Link>
               <Button
@@ -385,6 +444,109 @@ export default function EvidenceBankPage() {
           </Card>
         </div>
 
+        {/* Pending Insights Section - Unfetched Evidence */}
+        {pendingInsights.length > 0 && (
+          <Card className="mb-6 border-blue-200 bg-blue-50/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <span className="text-blue-600">📥</span>
+                    Pending Insights
+                    <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                      {pendingInsights.length} new
+                    </Badge>
+                  </CardTitle>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowPendingSection(!showPendingSection)}
+                >
+                  {showPendingSection ? 'Hide' : 'Show'}
+                </Button>
+              </div>
+              <p className="text-sm text-gray-600">
+                Insights fetched from your sources that haven't been added to your evidence bank yet
+              </p>
+            </CardHeader>
+            {showPendingSection && (
+              <CardContent className="pt-0">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {pendingInsights.map((insight) => (
+                    <div
+                      key={insight.id}
+                      className="flex items-start justify-between p-3 bg-white rounded-lg border shadow-sm"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg">{SOURCE_ICONS[insight.source_system]}</span>
+                          <h4 className="font-medium text-sm truncate">{insight.title}</h4>
+                        </div>
+                        {insight.ai_summary && (
+                          <p className="text-xs text-gray-600 line-clamp-2 mb-1">{insight.ai_summary}</p>
+                        )}
+                        {insight.content && !insight.ai_summary && (
+                          <p className="text-xs text-gray-600 line-clamp-2 mb-1">{insight.content}</p>
+                        )}
+                        <p className="text-xs text-gray-400">
+                          Fetched {new Date(insight.fetched_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        <div className="flex flex-col gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7 border-green-300 text-green-700 hover:bg-green-50"
+                            onClick={() => handleAddInsightToBank(insight, 'high')}
+                          >
+                            + High
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7 border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+                            onClick={() => handleAddInsightToBank(insight, 'medium')}
+                          >
+                            + Medium
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-7 border-red-300 text-red-700 hover:bg-red-50"
+                            onClick={() => handleAddInsightToBank(insight, 'low')}
+                          >
+                            + Low
+                          </Button>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs h-7 text-gray-400 hover:text-gray-600"
+                          onClick={() => handleDismissInsight(insight.id)}
+                        >
+                          ✕
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                  <Link href="/insights" className="text-sm text-blue-600 hover:underline">
+                    View all in Insights Feed →
+                  </Link>
+                  <Link href="/settings/insights-schedule">
+                    <Button variant="outline" size="sm">
+                      Configure Sources
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            )}
+          </Card>
+        )}
+
         {/* Evidence List */}
         {filteredEvidence.length > 0 ? (
           <div className="grid gap-4">
@@ -450,9 +612,37 @@ export default function EvidenceBankPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Add Evidence</DialogTitle>
+            <DialogDescription>
+              Add evidence manually or link to an external source
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Source Picker */}
+            <div className="space-y-2">
+              <Label>Source</Label>
+              <div className="grid grid-cols-5 gap-2">
+                {(['manual', 'slack', 'notion', 'mixpanel', 'airtable'] as const).map((source) => (
+                  <button
+                    key={source}
+                    type="button"
+                    onClick={() => setAddSource(source)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors ${
+                      addSource === source
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">{SOURCE_ICONS[source]}</span>
+                    <span className="text-xs capitalize">{source}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">
+                Select where this evidence came from to organize it by source
+              </p>
+            </div>
+
             <div className="space-y-2">
               <Label>Title</Label>
               <Input
@@ -470,7 +660,10 @@ export default function EvidenceBankPage() {
               <TabsContent value="url" className="space-y-2">
                 <Label>URL</Label>
                 <Input
-                  placeholder="https://..."
+                  placeholder={addSource === 'slack' ? 'https://workspace.slack.com/archives/...' :
+                              addSource === 'notion' ? 'https://notion.so/...' :
+                              addSource === 'airtable' ? 'https://airtable.com/...' :
+                              'https://...'}
                   value={addUrl}
                   onChange={(e) => setAddUrl(e.target.value)}
                 />

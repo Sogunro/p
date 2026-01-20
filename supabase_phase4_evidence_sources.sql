@@ -92,12 +92,21 @@ ALTER TABLE insights_feed ADD COLUMN IF NOT EXISTS
 ALTER TABLE workspace_evidence_sources ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_insights_analysis ENABLE ROW LEVEL SECURITY;
 
--- Workspace Evidence Sources Policies
+-- Drop existing policies if they exist (for re-running migration)
+DROP POLICY IF EXISTS "Users can view their workspace evidence sources" ON workspace_evidence_sources;
+DROP POLICY IF EXISTS "Users can insert their workspace evidence sources" ON workspace_evidence_sources;
+DROP POLICY IF EXISTS "Users can update their workspace evidence sources" ON workspace_evidence_sources;
+DROP POLICY IF EXISTS "Users can delete their workspace evidence sources" ON workspace_evidence_sources;
+DROP POLICY IF EXISTS "Users can view their daily insights analysis" ON daily_insights_analysis;
+DROP POLICY IF EXISTS "Users can insert their daily insights analysis" ON daily_insights_analysis;
+DROP POLICY IF EXISTS "Users can update their daily insights analysis" ON daily_insights_analysis;
+
+-- Workspace Evidence Sources Policies (using workspace_members table)
 CREATE POLICY "Users can view their workspace evidence sources"
   ON workspace_evidence_sources FOR SELECT
   USING (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
     )
   );
 
@@ -105,7 +114,7 @@ CREATE POLICY "Users can insert their workspace evidence sources"
   ON workspace_evidence_sources FOR INSERT
   WITH CHECK (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
     )
   );
 
@@ -113,7 +122,7 @@ CREATE POLICY "Users can update their workspace evidence sources"
   ON workspace_evidence_sources FOR UPDATE
   USING (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
     )
   );
 
@@ -121,16 +130,16 @@ CREATE POLICY "Users can delete their workspace evidence sources"
   ON workspace_evidence_sources FOR DELETE
   USING (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid() AND role IN ('owner', 'admin')
     )
   );
 
--- Daily Insights Analysis Policies
+-- Daily Insights Analysis Policies (using workspace_members table)
 CREATE POLICY "Users can view their daily insights analysis"
   ON daily_insights_analysis FOR SELECT
   USING (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
     )
   );
 
@@ -138,7 +147,7 @@ CREATE POLICY "Users can insert their daily insights analysis"
   ON daily_insights_analysis FOR INSERT
   WITH CHECK (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
     )
   );
 
@@ -146,7 +155,7 @@ CREATE POLICY "Users can update their daily insights analysis"
   ON daily_insights_analysis FOR UPDATE
   USING (
     workspace_id IN (
-      SELECT id FROM workspaces WHERE user_id = auth.uid()
+      SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
     )
   );
 

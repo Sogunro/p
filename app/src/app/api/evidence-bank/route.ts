@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, type, url, content, strength, tags } = body
+    const { title, type, url, content, strength, tags, source_system } = body
 
     if (!title || !type) {
       return NextResponse.json({ error: 'Title and type are required' }, { status: 400 })
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
         url: type === 'url' ? url : null,
         content: type === 'text' ? content : null,
         strength: strength || 'medium',
-        source_system: 'manual',
+        source_system: source_system || 'manual',
         tags: tags || [],
         created_by: user.id,
       })
