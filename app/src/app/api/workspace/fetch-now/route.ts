@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { SourceSystem } from '@/types/database'
+import { SourceSystem, AirtableSourceConfig } from '@/types/database'
 
 // POST /api/workspace/fetch-now
 // Triggers n8n to fetch evidence from specified sources
-// Body: { sources?: SourceSystem[], sessionId?: string }
+// Body: { sources?: SourceSystem[], sessionId?: string, lookback_hours?: number }
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -25,28 +25,70 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
-    // Get workspace settings to check which integrations are enabled
-    const { data: settings } = await supabase
-      .from('workspace_settings')
+    // Get workspace evidence sources configuration
+    const { data: evidenceSources } = await supabase
+      .from('workspace_evidence_sources')
       .select('*')
       .eq('workspace_id', membership.workspace_id)
       .single()
-
-    if (!settings) {
-      return NextResponse.json({ error: 'Workspace settings not found' }, { status: 404 })
-    }
 
     // Parse request body
     const body = await request.json().catch(() => ({}))
     const requestedSources = body.sources as SourceSystem[] | undefined
     const sessionId = body.sessionId as string | undefined
+    const lookbackHours = body.lookback_hours as number | undefined
 
-    // Determine which sources to fetch
-    const enabledSources: SourceSystem[] = []
-    if (settings.slack_enabled) enabledSources.push('slack')
-    if (settings.notion_enabled) enabledSources.push('notion')
-    if (settings.mixpanel_enabled) enabledSources.push('mixpanel')
-    if (settings.airtable_enabled) enabledSources.push('airtable')
+    // Use evidence sources config if available, otherwise fall back to workspace settings
+    let enabledSources: SourceSystem[] = []
+    let sourceConfig = {
+      slack: { enabled: false, channel_ids: [] as string[] },
+      notion: { enabled: false, database_ids: [] as string[] },
+      airtable: { enabled: false, sources: [] as AirtableSourceConfig[] },
+      mixpanel: { enabled: false },
+    }
+
+    if (evidenceSources) {
+      // Use new evidence sources configuration
+      if (evidenceSources.slack_enabled) {
+        enabledSources.push('slack')
+        sourceConfig.slack = {
+          enabled: true,
+          channel_ids: evidenceSources.slack_channel_ids || [],
+        }
+      }
+      if (evidenceSources.notion_enabled) {
+        enabledSources.push('notion')
+        sourceConfig.notion = {
+          enabled: true,
+          database_ids: evidenceSources.notion_database_ids || [],
+        }
+      }
+      if (evidenceSources.airtable_enabled) {
+        enabledSources.push('airtable')
+        sourceConfig.airtable = {
+          enabled: true,
+          sources: (evidenceSources.airtable_sources as AirtableSourceConfig[]) || [],
+        }
+      }
+      if (evidenceSources.mixpanel_enabled) {
+        enabledSources.push('mixpanel')
+        sourceConfig.mixpanel = { enabled: true }
+      }
+    } else {
+      // Fall back to old workspace_settings for backwards compatibility
+      const { data: settings } = await supabase
+        .from('workspace_settings')
+        .select('*')
+        .eq('workspace_id', membership.workspace_id)
+        .single()
+
+      if (settings) {
+        if (settings.slack_enabled) enabledSources.push('slack')
+        if (settings.notion_enabled) enabledSources.push('notion')
+        if (settings.mixpanel_enabled) enabledSources.push('mixpanel')
+        if (settings.airtable_enabled) enabledSources.push('airtable')
+      }
+    }
 
     // If specific sources requested, filter to only enabled ones
     const sourcesToFetch = requestedSources
@@ -56,9 +98,17 @@ export async function POST(request: NextRequest) {
     if (sourcesToFetch.length === 0) {
       return NextResponse.json({
         error: 'No enabled sources to fetch',
-        message: 'Enable at least one integration in Settings > Integrations',
+        message: 'Enable at least one integration in Settings > Evidence Sources',
         enabledSources: [],
       }, { status: 400 })
+    }
+
+    // Build the sources payload for n8n
+    const sourcesPayload = {
+      slack: sourcesToFetch.includes('slack') ? sourceConfig.slack : { enabled: false },
+      notion: sourcesToFetch.includes('notion') ? sourceConfig.notion : { enabled: false },
+      airtable: sourcesToFetch.includes('airtable') ? sourceConfig.airtable : { enabled: false },
+      mixpanel: sourcesToFetch.includes('mixpanel') ? sourceConfig.mixpanel : { enabled: false },
     }
 
     // Check if N8N_TRIGGER_URL is configured
@@ -72,17 +122,16 @@ export async function POST(request: NextRequest) {
         manualSetup: true,
         payload: {
           workspace_id: membership.workspace_id,
-          sources: sourcesToFetch,
-          session_id: sessionId,
-          fetch_type: 'on_demand',
-          timestamp: new Date().toISOString(),
+          lookback_hours: lookbackHours || evidenceSources?.lookback_hours || 24,
+          callback_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.vercel.app'}/api/webhook/insights`,
+          sources: sourcesPayload,
         },
         webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.vercel.app'}/api/webhook/insights`,
         webhookSecret: 'Configure N8N_WEBHOOK_SECRET in environment variables',
       })
     }
 
-    // Trigger n8n workflow
+    // Trigger n8n workflow with full source configuration
     const n8nResponse = await fetch(n8nTriggerUrl, {
       method: 'POST',
       headers: {
@@ -91,11 +140,9 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         workspace_id: membership.workspace_id,
-        sources: sourcesToFetch,
-        session_id: sessionId,
-        fetch_type: 'on_demand',
-        timestamp: new Date().toISOString(),
+        lookback_hours: lookbackHours || evidenceSources?.lookback_hours || 24,
         callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhook/insights`,
+        sources: sourcesPayload,
       }),
     })
 
@@ -152,32 +199,54 @@ export async function GET() {
       return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
-    // Get workspace settings
-    const { data: settings } = await supabase
-      .from('workspace_settings')
+    // Get evidence sources config
+    const { data: evidenceSources } = await supabase
+      .from('workspace_evidence_sources')
       .select('*')
       .eq('workspace_id', membership.workspace_id)
       .single()
 
-    if (!settings) {
-      return NextResponse.json({ error: 'Workspace settings not found' }, { status: 404 })
-    }
+    // Get workspace settings for last_fetch_at
+    const { data: settings } = await supabase
+      .from('workspace_settings')
+      .select('last_fetch_at')
+      .eq('workspace_id', membership.workspace_id)
+      .single()
 
-    // Determine enabled sources
+    // Determine enabled sources from evidence sources config
     const enabledSources: SourceSystem[] = []
-    if (settings.slack_enabled) enabledSources.push('slack')
-    if (settings.notion_enabled) enabledSources.push('notion')
-    if (settings.mixpanel_enabled) enabledSources.push('mixpanel')
-    if (settings.airtable_enabled) enabledSources.push('airtable')
+    if (evidenceSources) {
+      if (evidenceSources.slack_enabled) enabledSources.push('slack')
+      if (evidenceSources.notion_enabled) enabledSources.push('notion')
+      if (evidenceSources.mixpanel_enabled) enabledSources.push('mixpanel')
+      if (evidenceSources.airtable_enabled) enabledSources.push('airtable')
+    }
 
     return NextResponse.json({
       workspaceId: membership.workspace_id,
       enabledSources,
-      lastFetchAt: settings.last_fetch_at,
-      feedEnabled: settings.feed_enabled,
-      scheduleTime: settings.feed_schedule_time,
-      timezone: settings.feed_timezone,
+      lastFetchAt: settings?.last_fetch_at || null,
+      autoFetchEnabled: evidenceSources?.auto_fetch_enabled || false,
+      autoFetchTime: evidenceSources?.auto_fetch_time || '18:00',
+      lookbackHours: evidenceSources?.lookback_hours || 24,
       n8nConfigured: !!process.env.N8N_TRIGGER_URL,
+      sourceDetails: evidenceSources ? {
+        slack: {
+          enabled: evidenceSources.slack_enabled,
+          channelCount: (evidenceSources.slack_channel_ids || []).length,
+        },
+        notion: {
+          enabled: evidenceSources.notion_enabled,
+          databaseCount: (evidenceSources.notion_database_ids || []).length,
+        },
+        airtable: {
+          enabled: evidenceSources.airtable_enabled,
+          sourceCount: ((evidenceSources.airtable_sources as AirtableSourceConfig[]) || []).length,
+        },
+        mixpanel: {
+          enabled: evidenceSources.mixpanel_enabled,
+        },
+      } : null,
     })
   } catch (error) {
     console.error('Fetch status error:', error)

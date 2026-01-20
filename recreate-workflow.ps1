@@ -10,7 +10,7 @@ if (-not $apiKey) {
 }
 
 $baseUrl = "https://toluwase94.app.n8n.cloud/api/v1"
-$workflowId = "tJwo8K8cAbOy2lH4"
+$workflowId = "jxaVJOByDXGbe8Kv"
 
 $headers = @{
     "X-N8N-API-KEY" = $apiKey

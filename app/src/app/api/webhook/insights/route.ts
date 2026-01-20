@@ -1,7 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
+
+// Types for AI-analyzed insights from n8n
+interface AIAnalyzedInsight {
+  title: string
+  description?: string
+  source: 'slack' | 'notion' | 'mixpanel' | 'airtable'
+  source_url?: string
+  pain_points?: string[]
+  feature_requests?: string[]
+  sentiment?: 'positive' | 'negative' | 'neutral'
+  strength?: 'strong' | 'medium' | 'weak'
+  key_quotes?: string[]
+  tags?: string[]
+}
+
+interface AIAnalysisPayload {
+  workspace_id: string
+  analyzed_at?: string
+  summary?: string
+  insights: AIAnalyzedInsight[]
+  themes?: Array<{ theme: string; count: number; sources: string[] }>
+  action_items?: Array<{ action: string; urgency: 'high' | 'medium' | 'low' }>
+}
+
+// Legacy payload format for backwards compatibility
+interface LegacyPayload {
+  workspace_id: string
+  source_system: 'slack' | 'notion' | 'mixpanel' | 'airtable'
+  items: Array<{
+    title: string
+    content?: string
+    url?: string
+    strength?: string
+    source_metadata?: Record<string, unknown>
+  }>
+}
 
 // This endpoint receives insights from n8n workflows
+// Supports both new AI-analyzed format and legacy format
 // Uses service role key for direct database access (no RLS)
 export async function POST(request: NextRequest) {
   try {
@@ -12,21 +49,6 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { workspace_id, source_system, items } = body
-
-    if (!workspace_id || !source_system || !items || !Array.isArray(items)) {
-      return NextResponse.json({
-        error: 'workspace_id, source_system, and items array are required'
-      }, { status: 400 })
-    }
-
-    // Validate source_system
-    const validSources = ['slack', 'notion', 'mixpanel', 'airtable']
-    if (!validSources.includes(source_system)) {
-      return NextResponse.json({
-        error: `Invalid source_system. Must be one of: ${validSources.join(', ')}`
-      }, { status: 400 })
-    }
 
     // Use service role for webhook inserts (bypasses RLS)
     const supabase = createClient(
@@ -34,79 +56,239 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Verify workspace exists
-    const { data: workspace, error: workspaceError } = await supabase
-      .from('workspaces')
-      .select('id')
-      .eq('id', workspace_id)
-      .single()
-
-    if (workspaceError || !workspace) {
-      return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+    // Detect payload format: new AI-analyzed format has 'insights' array, legacy has 'items' array
+    if (body.insights && Array.isArray(body.insights)) {
+      return handleAIAnalyzedPayload(body as AIAnalysisPayload, supabase)
+    } else if (body.items && Array.isArray(body.items)) {
+      return handleLegacyPayload(body as LegacyPayload, supabase)
+    } else {
+      return NextResponse.json({
+        error: 'Invalid payload format. Expected either "insights" array (AI-analyzed) or "items" array (legacy)'
+      }, { status: 400 })
     }
-
-    // Insert insights
-    const insightsToInsert = items.map((item: {
-      title: string
-      content?: string
-      url?: string
-      strength?: string
-      source_metadata?: Record<string, unknown>
-    }) => ({
-      workspace_id,
-      source_system,
-      title: item.title,
-      content: item.content || null,
-      url: item.url || null,
-      strength: item.strength || 'medium',
-      source_metadata: item.source_metadata || {},
-      fetched_at: new Date().toISOString(),
-    }))
-
-    const { data: inserted, error: insertError } = await supabase
-      .from('insights_feed')
-      .insert(insightsToInsert)
-      .select()
-
-    if (insertError) {
-      console.error('Error inserting insights:', insertError)
-      return NextResponse.json({ error: 'Failed to insert insights' }, { status: 500 })
-    }
-
-    // Update last_fetch_at in workspace settings
-    await supabase
-      .from('workspace_settings')
-      .update({ last_fetch_at: new Date().toISOString() })
-      .eq('workspace_id', workspace_id)
-
-    return NextResponse.json({
-      success: true,
-      inserted: inserted?.length || 0,
-      message: `Successfully added ${inserted?.length || 0} insights from ${source_system}`
-    })
   } catch (error) {
     console.error('Webhook error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// GET: Health check for n8n
+// Handle new AI-analyzed payload from n8n
+async function handleAIAnalyzedPayload(
+  payload: AIAnalysisPayload,
+  supabase: SupabaseClient
+) {
+  const { workspace_id, summary, insights, themes, action_items, analyzed_at } = payload
+
+  if (!workspace_id || !insights || insights.length === 0) {
+    return NextResponse.json({
+      error: 'workspace_id and non-empty insights array are required'
+    }, { status: 400 })
+  }
+
+  // Verify workspace exists
+  const { data: workspace, error: workspaceError } = await supabase
+    .from('workspaces')
+    .select('id')
+    .eq('id', workspace_id)
+    .single()
+
+  if (workspaceError || !workspace) {
+    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+  }
+
+  const analysisDate = analyzed_at ? new Date(analyzed_at).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+
+  // Create or update daily analysis record
+  const sourcesIncluded = [...new Set(insights.map(i => i.source))]
+
+  const { data: analysis, error: analysisError } = await supabase
+    .from('daily_insights_analysis')
+    .upsert({
+      workspace_id,
+      analysis_date: analysisDate,
+      insight_count: insights.length,
+      sources_included: sourcesIncluded,
+      summary: summary || null,
+      themes: themes || [],
+      action_items: action_items || [],
+      updated_at: new Date().toISOString(),
+    }, {
+      onConflict: 'workspace_id,analysis_date'
+    })
+    .select()
+    .single()
+
+  if (analysisError) {
+    console.error('Error creating daily analysis:', analysisError)
+  }
+
+  // Insert insights with AI analysis fields
+  const insightsToInsert = insights.map((insight) => ({
+    workspace_id,
+    source_system: insight.source,
+    title: insight.title,
+    content: insight.description || null,
+    url: insight.source_url || null,
+    source_url: insight.source_url || null,
+    strength: insight.strength === 'strong' ? 'high' : insight.strength === 'weak' ? 'low' : 'medium',
+    source_metadata: {},
+    fetched_at: new Date().toISOString(),
+    // AI analysis fields
+    ai_summary: insight.description || null,
+    ai_themes: [],
+    ai_action_items: [],
+    pain_points: insight.pain_points || [],
+    feature_requests: insight.feature_requests || [],
+    sentiment: insight.sentiment || null,
+    key_quotes: insight.key_quotes || [],
+    tags: insight.tags || [],
+    analysis_id: analysis?.id || null,
+  }))
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('insights_feed')
+    .insert(insightsToInsert)
+    .select()
+
+  if (insertError) {
+    console.error('Error inserting insights:', insertError)
+    return NextResponse.json({ error: 'Failed to insert insights' }, { status: 500 })
+  }
+
+  // Update last_fetch_at in workspace settings
+  await supabase
+    .from('workspace_settings')
+    .update({ last_fetch_at: new Date().toISOString() })
+    .eq('workspace_id', workspace_id)
+
+  return NextResponse.json({
+    success: true,
+    format: 'ai_analyzed',
+    inserted: inserted?.length || 0,
+    analysis_id: analysis?.id || null,
+    sources: sourcesIncluded,
+    message: `Successfully added ${inserted?.length || 0} AI-analyzed insights`
+  })
+}
+
+// Handle legacy payload format for backwards compatibility
+async function handleLegacyPayload(
+  payload: LegacyPayload,
+  supabase: SupabaseClient
+) {
+  const { workspace_id, source_system, items } = payload
+
+  if (!workspace_id || !source_system || !items || !Array.isArray(items)) {
+    return NextResponse.json({
+      error: 'workspace_id, source_system, and items array are required'
+    }, { status: 400 })
+  }
+
+  // Validate source_system
+  const validSources = ['slack', 'notion', 'mixpanel', 'airtable']
+  if (!validSources.includes(source_system)) {
+    return NextResponse.json({
+      error: `Invalid source_system. Must be one of: ${validSources.join(', ')}`
+    }, { status: 400 })
+  }
+
+  // Verify workspace exists
+  const { data: workspace, error: workspaceError } = await supabase
+    .from('workspaces')
+    .select('id')
+    .eq('id', workspace_id)
+    .single()
+
+  if (workspaceError || !workspace) {
+    return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+  }
+
+  // Insert insights
+  const insightsToInsert = items.map((item) => ({
+    workspace_id,
+    source_system,
+    title: item.title,
+    content: item.content || null,
+    url: item.url || null,
+    strength: item.strength || 'medium',
+    source_metadata: item.source_metadata || {},
+    fetched_at: new Date().toISOString(),
+  }))
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('insights_feed')
+    .insert(insightsToInsert)
+    .select()
+
+  if (insertError) {
+    console.error('Error inserting insights:', insertError)
+    return NextResponse.json({ error: 'Failed to insert insights' }, { status: 500 })
+  }
+
+  // Update last_fetch_at in workspace settings
+  await supabase
+    .from('workspace_settings')
+    .update({ last_fetch_at: new Date().toISOString() })
+    .eq('workspace_id', workspace_id)
+
+  return NextResponse.json({
+    success: true,
+    format: 'legacy',
+    inserted: inserted?.length || 0,
+    message: `Successfully added ${inserted?.length || 0} insights from ${source_system}`
+  })
+}
+
+// GET: Health check for n8n - documents both payload formats
 export async function GET() {
   return NextResponse.json({
     status: 'ok',
-    message: 'Insights webhook is active',
-    expectedPayload: {
-      workspace_id: 'uuid',
-      source_system: 'slack | notion | mixpanel | airtable',
-      items: [
-        {
-          title: 'string (required)',
-          content: 'string (optional)',
-          url: 'string (optional)',
-          strength: 'high | medium | low (optional, defaults to medium)',
-          source_metadata: 'object (optional)'
+    message: 'Insights webhook is active. Supports both AI-analyzed and legacy formats.',
+    formats: {
+      ai_analyzed: {
+        description: 'New format with AI analysis from n8n OpenAI node',
+        payload: {
+          workspace_id: 'uuid (required)',
+          analyzed_at: 'ISO timestamp (optional)',
+          summary: '2-3 sentence overview (optional)',
+          insights: [
+            {
+              title: 'string (required)',
+              description: 'string (optional)',
+              source: 'slack | notion | mixpanel | airtable (required)',
+              source_url: 'link to original (optional)',
+              pain_points: ['array of strings (optional)'],
+              feature_requests: ['array of strings (optional)'],
+              sentiment: 'positive | negative | neutral (optional)',
+              strength: 'strong | medium | weak (optional)',
+              key_quotes: ['array of strings (optional)'],
+              tags: ['array of strings (optional)']
+            }
+          ],
+          themes: [
+            { theme: 'Theme name', count: 5, sources: ['slack', 'notion'] }
+          ],
+          action_items: [
+            { action: 'Action description', urgency: 'high | medium | low' }
+          ]
         }
-      ]
+      },
+      legacy: {
+        description: 'Original format for backwards compatibility',
+        payload: {
+          workspace_id: 'uuid (required)',
+          source_system: 'slack | notion | mixpanel | airtable (required)',
+          items: [
+            {
+              title: 'string (required)',
+              content: 'string (optional)',
+              url: 'string (optional)',
+              strength: 'high | medium | low (optional)',
+              source_metadata: 'object (optional)'
+            }
+          ]
+        }
+      }
     }
   })
 }

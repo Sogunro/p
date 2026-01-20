@@ -249,6 +249,9 @@ export default function InsightsFeedPage() {
               <Link href="/evidence-bank">
                 <Button variant="outline">View Evidence Bank</Button>
               </Link>
+              <Link href="/settings/evidence-sources">
+                <Button variant="outline">Evidence Sources</Button>
+              </Link>
               <Link href="/settings/integrations">
                 <Button variant="outline">Settings</Button>
               </Link>
@@ -325,59 +328,106 @@ export default function InsightsFeedPage() {
               <div className="mb-8">
                 <h2 className="text-lg font-semibold mb-4">Pending Review ({pendingInsights.length})</h2>
                 <div className="space-y-4">
-                  {pendingInsights.map((insight) => (
-                    <Card key={insight.id} className="border-l-4 border-l-blue-500">
-                      <CardContent className="py-4">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className="text-lg">{SOURCE_ICONS[insight.source_system]}</span>
-                              <Badge className={SOURCE_COLORS[insight.source_system]}>
-                                {insight.source_system}
-                              </Badge>
-                              <Badge className={STRENGTH_COLORS[insight.strength]}>
-                                {insight.strength}
-                              </Badge>
+                  {pendingInsights.map((insight) => {
+                    const painPoints = (insight.pain_points as string[]) || []
+                    const tags = (insight.tags as string[]) || []
+                    const sentiment = insight.sentiment as string | null
+                    const keyQuotes = (insight.key_quotes as string[]) || []
+
+                    return (
+                      <Card key={insight.id} className="border-l-4 border-l-blue-500">
+                        <CardContent className="py-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                                <span className="text-lg">{SOURCE_ICONS[insight.source_system]}</span>
+                                <Badge className={SOURCE_COLORS[insight.source_system]}>
+                                  {insight.source_system}
+                                </Badge>
+                                <Badge className={STRENGTH_COLORS[insight.strength]}>
+                                  {insight.strength}
+                                </Badge>
+                                {sentiment && (
+                                  <Badge className={
+                                    sentiment === 'positive' ? 'bg-green-100 text-green-800' :
+                                    sentiment === 'negative' ? 'bg-red-100 text-red-800' :
+                                    'bg-gray-100 text-gray-800'
+                                  }>
+                                    {sentiment}
+                                  </Badge>
+                                )}
+                              </div>
+                              <h3 className="font-medium mb-1">{insight.title}</h3>
+                              {insight.content && (
+                                <p className="text-sm text-gray-600 mb-2">{insight.content}</p>
+                              )}
+
+                              {/* Pain points */}
+                              {painPoints.length > 0 && (
+                                <div className="mb-2">
+                                  <span className="text-xs font-medium text-red-700">Pain points: </span>
+                                  <span className="text-xs text-red-600">{painPoints.join(', ')}</span>
+                                </div>
+                              )}
+
+                              {/* Key quotes */}
+                              {keyQuotes.length > 0 && (
+                                <div className="mb-2 text-xs italic text-gray-500 bg-gray-50 p-2 rounded">
+                                  &quot;{keyQuotes[0]}&quot;
+                                  {keyQuotes.length > 1 && ` (+${keyQuotes.length - 1} more)`}
+                                </div>
+                              )}
+
+                              {/* Tags */}
+                              {tags.length > 0 && (
+                                <div className="flex gap-1 mb-2 flex-wrap">
+                                  {tags.slice(0, 5).map((tag, idx) => (
+                                    <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                  {tags.length > 5 && (
+                                    <span className="text-xs text-gray-500">+{tags.length - 5} more</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {(insight.url || insight.source_url) && (
+                                <a
+                                  href={(insight.source_url || insight.url) as string}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-blue-600 hover:underline"
+                                >
+                                  View source
+                                </a>
+                              )}
+                              <p className="text-xs text-gray-400 mt-2">
+                                Fetched {formatDate(insight.fetched_at)}
+                              </p>
                             </div>
-                            <h3 className="font-medium mb-1">{insight.title}</h3>
-                            {insight.content && (
-                              <p className="text-sm text-gray-600 mb-2">{insight.content}</p>
-                            )}
-                            {insight.url && (
-                              <a
-                                href={insight.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-blue-600 hover:underline"
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleAddToBank(insight.id)}
+                                disabled={actionLoading === insight.id}
                               >
-                                View source
-                              </a>
-                            )}
-                            <p className="text-xs text-gray-400 mt-2">
-                              Fetched {formatDate(insight.fetched_at)}
-                            </p>
+                                {actionLoading === insight.id ? '...' : 'Add to Bank'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDismiss(insight.id)}
+                                disabled={actionLoading === insight.id}
+                              >
+                                Dismiss
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleAddToBank(insight.id)}
-                              disabled={actionLoading === insight.id}
-                            >
-                              {actionLoading === insight.id ? '...' : 'Add to Bank'}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDismiss(insight.id)}
-                              disabled={actionLoading === insight.id}
-                            >
-                              Dismiss
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
                 </div>
               </div>
             )}

@@ -508,6 +508,17 @@ export interface Database {
           is_dismissed: boolean
           fetched_at: string
           created_at: string
+          // Phase 4: AI Analysis Fields
+          ai_summary: string | null
+          ai_themes: Json
+          ai_action_items: Json
+          source_url: string | null
+          pain_points: Json
+          feature_requests: Json
+          sentiment: string | null
+          key_quotes: Json
+          tags: Json
+          analysis_id: string | null
         }
         Insert: {
           id?: string
@@ -522,6 +533,17 @@ export interface Database {
           is_dismissed?: boolean
           fetched_at?: string
           created_at?: string
+          // Phase 4: AI Analysis Fields
+          ai_summary?: string | null
+          ai_themes?: Json
+          ai_action_items?: Json
+          source_url?: string | null
+          pain_points?: Json
+          feature_requests?: Json
+          sentiment?: string | null
+          key_quotes?: Json
+          tags?: Json
+          analysis_id?: string | null
         }
         Update: {
           id?: string
@@ -536,6 +558,17 @@ export interface Database {
           is_dismissed?: boolean
           fetched_at?: string
           created_at?: string
+          // Phase 4: AI Analysis Fields
+          ai_summary?: string | null
+          ai_themes?: Json
+          ai_action_items?: Json
+          source_url?: string | null
+          pain_points?: Json
+          feature_requests?: Json
+          sentiment?: string | null
+          key_quotes?: Json
+          tags?: Json
+          analysis_id?: string | null
         }
       }
       workspace_settings: {
@@ -642,6 +675,57 @@ export interface Database {
           updated_at?: string
         }
       }
+      // Phase 4: Workspace Evidence Sources Configuration
+      workspace_evidence_sources: {
+        Row: {
+          id: string
+          workspace_id: string
+          slack_enabled: boolean
+          slack_channel_ids: string[]
+          notion_enabled: boolean
+          notion_database_ids: string[]
+          airtable_enabled: boolean
+          airtable_sources: Json
+          mixpanel_enabled: boolean
+          auto_fetch_enabled: boolean
+          auto_fetch_time: string
+          lookback_hours: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          slack_enabled?: boolean
+          slack_channel_ids?: string[]
+          notion_enabled?: boolean
+          notion_database_ids?: string[]
+          airtable_enabled?: boolean
+          airtable_sources?: Json
+          mixpanel_enabled?: boolean
+          auto_fetch_enabled?: boolean
+          auto_fetch_time?: string
+          lookback_hours?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          slack_enabled?: boolean
+          slack_channel_ids?: string[]
+          notion_enabled?: boolean
+          notion_database_ids?: string[]
+          airtable_enabled?: boolean
+          airtable_sources?: Json
+          mixpanel_enabled?: boolean
+          auto_fetch_enabled?: boolean
+          auto_fetch_time?: string
+          lookback_hours?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
       // Phase 3: Team Collaboration
       workspace_invites: {
         Row: {
@@ -718,6 +802,16 @@ export type WorkspaceRole = 'owner' | 'admin' | 'member'
 
 // Phase 4: Daily Insights Analysis types
 export type DailyInsightsAnalysis = Database['public']['Tables']['daily_insights_analysis']['Row']
+
+// Phase 4: Workspace Evidence Sources types
+export type WorkspaceEvidenceSources = Database['public']['Tables']['workspace_evidence_sources']['Row']
+
+// Airtable source configuration structure
+export interface AirtableSourceConfig {
+  base_id: string
+  table_id: string
+  name?: string
+}
 
 // Structured types for AI analysis results
 export interface InsightTheme {
