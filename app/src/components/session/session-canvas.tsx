@@ -544,23 +544,38 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           message: data.message,
         })
         setLastFetchAt(new Date().toISOString())
+        // Show success alert
+        alert(`✅ ${data.message}`)
       } else if (data.evidenceCount === 0) {
+        const msg = 'No evidence found in the Evidence Bank. Add evidence to sticky notes first.'
         setFetchEvidenceResult({
           success: false,
-          message: 'No evidence found in the Evidence Bank. Add evidence to sticky notes first.',
+          message: msg,
         })
+        alert(`⚠️ ${msg}`)
+      } else if (data.urlCount === 0) {
+        const msg = 'No evidence with URLs found. Add URLs to your evidence for n8n to fetch.'
+        setFetchEvidenceResult({
+          success: false,
+          message: msg,
+        })
+        alert(`⚠️ ${msg}`)
       } else {
+        const msg = data.error || data.message || 'Failed to send evidence for analysis'
         setFetchEvidenceResult({
           success: false,
-          message: data.error || data.message || 'Failed to send evidence for analysis',
+          message: msg,
         })
+        alert(`❌ ${msg}`)
       }
     } catch (error) {
       console.error('Failed to fetch evidence:', error)
+      const msg = 'Network error occurred'
       setFetchEvidenceResult({
         success: false,
-        message: 'Network error occurred',
+        message: msg,
       })
+      alert(`❌ ${msg}`)
     } finally {
       setIsFetchingEvidence(false)
     }
