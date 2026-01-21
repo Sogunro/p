@@ -105,6 +105,21 @@ export async function POST(request: NextRequest) {
 
     console.log('Direct evidence found:', workspaceDirectEvidence.length)
 
+    // Helper function to detect source type from URL
+    const detectSourceFromUrl = (url: string): string => {
+      const lowerUrl = url.toLowerCase()
+      if (lowerUrl.includes('slack.com') || lowerUrl.includes('slack://')) {
+        return 'slack'
+      }
+      if (lowerUrl.includes('notion.so') || lowerUrl.includes('notion.site')) {
+        return 'notion'
+      }
+      if (lowerUrl.includes('airtable.com')) {
+        return 'airtable'
+      }
+      return 'manual'
+    }
+
     // Combine evidence from both sources
     const bankWithUrls = (evidenceItems || []).filter(item => item.url)
 
@@ -118,19 +133,19 @@ export async function POST(request: NextRequest) {
         seenUrls.add(item.url)
         allEvidence.push({
           id: item.id,
-          source_type: item.source_system || 'manual',
+          source_type: item.source_system || detectSourceFromUrl(item.url),
           url: item.url,
         })
       }
     }
 
-    // Add direct evidence (all manual source type)
+    // Add direct evidence - detect source from URL
     for (const item of workspaceDirectEvidence) {
       if (item.url && !seenUrls.has(item.url)) {
         seenUrls.add(item.url)
         allEvidence.push({
           id: item.id,
-          source_type: 'manual',
+          source_type: detectSourceFromUrl(item.url),
           url: item.url,
         })
       }
