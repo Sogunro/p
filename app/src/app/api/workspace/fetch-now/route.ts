@@ -91,16 +91,19 @@ export async function POST(request: NextRequest) {
     }
 
     // If specific sources requested, filter to only enabled ones
+    // But always allow 'manual' source for session-added evidence
     const sourcesToFetch = requestedSources
-      ? requestedSources.filter(s => enabledSources.includes(s))
-      : enabledSources
+      ? requestedSources.filter(s => s === 'manual' || enabledSources.includes(s))
+      : enabledSources.length > 0 ? enabledSources : ['manual' as SourceSystem]
 
-    if (sourcesToFetch.length === 0) {
-      return NextResponse.json({
-        error: 'No enabled sources to fetch',
-        message: 'Enable at least one integration in Settings > Evidence Sources',
-        enabledSources: [],
-      }, { status: 400 })
+    // Always include manual in the source config for session evidence
+    if (!sourceConfig.slack.enabled && !sourceConfig.notion.enabled &&
+        !sourceConfig.airtable.enabled && !sourceConfig.mixpanel.enabled) {
+      // No external sources configured - just process manual/session evidence
+      sourceConfig = {
+        ...sourceConfig,
+        manual: { enabled: true },
+      } as typeof sourceConfig & { manual: { enabled: boolean } }
     }
 
     // Build the sources payload for n8n
@@ -109,6 +112,7 @@ export async function POST(request: NextRequest) {
       notion: sourcesToFetch.includes('notion') ? sourceConfig.notion : { enabled: false },
       airtable: sourcesToFetch.includes('airtable') ? sourceConfig.airtable : { enabled: false },
       mixpanel: sourcesToFetch.includes('mixpanel') ? sourceConfig.mixpanel : { enabled: false },
+      manual: sourcesToFetch.includes('manual') ? { enabled: true } : { enabled: false },
     }
 
     // Check if N8N_TRIGGER_URL is configured

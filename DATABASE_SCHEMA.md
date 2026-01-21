@@ -534,3 +534,105 @@ workspaces
     │
     └──< sessions (via workspace_id in profiles)
 ```
+
+---
+
+## [2026-01-21] SQL Migration Commands
+
+Run this SQL in Supabase SQL Editor to ensure all tables are properly set up:
+
+```sql
+-- ============================================
+-- 1. VERIFY STICKY NOTE EVIDENCE LINKS TABLE
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS sticky_note_evidence_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sticky_note_id UUID REFERENCES sticky_notes(id) ON DELETE CASCADE NOT NULL,
+  evidence_bank_id UUID REFERENCES evidence_bank(id) ON DELETE CASCADE NOT NULL,
+  linked_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(sticky_note_id, evidence_bank_id)
+);
+
+-- Enable RLS
+ALTER TABLE sticky_note_evidence_links ENABLE ROW LEVEL SECURITY;
+
+-- Drop and recreate policies
+DROP POLICY IF EXISTS "Users can view their sticky note evidence links" ON sticky_note_evidence_links;
+DROP POLICY IF EXISTS "Users can insert their sticky note evidence links" ON sticky_note_evidence_links;
+DROP POLICY IF EXISTS "Users can delete their sticky note evidence links" ON sticky_note_evidence_links;
+
+-- Policy: Users can view links for notes in their sessions
+CREATE POLICY "Users can view their sticky note evidence links"
+  ON sticky_note_evidence_links FOR SELECT
+  USING (
+    sticky_note_id IN (
+      SELECT sn.id FROM sticky_notes sn
+      JOIN sections s ON sn.section_id = s.id
+      JOIN sessions sess ON s.session_id = sess.id
+      WHERE sess.user_id = auth.uid()
+    )
+  );
+
+-- Policy: Users can create links for notes in their sessions
+CREATE POLICY "Users can insert their sticky note evidence links"
+  ON sticky_note_evidence_links FOR INSERT
+  WITH CHECK (
+    sticky_note_id IN (
+      SELECT sn.id FROM sticky_notes sn
+      JOIN sections s ON sn.section_id = s.id
+      JOIN sessions sess ON s.session_id = sess.id
+      WHERE sess.user_id = auth.uid()
+    )
+  );
+
+-- Policy: Users can delete links for notes in their sessions
+CREATE POLICY "Users can delete their sticky note evidence links"
+  ON sticky_note_evidence_links FOR DELETE
+  USING (
+    sticky_note_id IN (
+      SELECT sn.id FROM sticky_notes sn
+      JOIN sections s ON sn.section_id = s.id
+      JOIN sessions sess ON s.session_id = sess.id
+      WHERE sess.user_id = auth.uid()
+    )
+  );
+
+-- ============================================
+-- 2. ADD INDEXES FOR PERFORMANCE
+-- ============================================
+
+CREATE INDEX IF NOT EXISTS idx_sticky_note_evidence_links_note
+  ON sticky_note_evidence_links(sticky_note_id);
+
+CREATE INDEX IF NOT EXISTS idx_sticky_note_evidence_links_evidence
+  ON sticky_note_evidence_links(evidence_bank_id);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_bank_source_system
+  ON evidence_bank(source_system);
+
+CREATE INDEX IF NOT EXISTS idx_evidence_bank_workspace_created
+  ON evidence_bank(workspace_id, created_at DESC);
+
+-- ============================================
+-- 3. ENSURE last_fetch_at EXISTS
+-- ============================================
+
+ALTER TABLE workspace_settings
+  ADD COLUMN IF NOT EXISTS last_fetch_at TIMESTAMPTZ;
+```
+
+---
+
+## [2026-01-21] Environment Variable Setup
+
+Update your `.env.local` file with these values:
+
+```bash
+# n8n Integration
+N8N_TRIGGER_URL=https://toluwase94.app.n8n.cloud/webhook/evidence-fetch-immediately
+N8N_WEBHOOK_SECRET=pdt-evidence-secret-2026
+NEXT_PUBLIC_APP_URL=https://pm-product-tool.vercel.app
+```
+
+**Important:** The `N8N_TRIGGER_URL` must point to `evidence-fetch-immediately` (not `evidence-fetch`) for the "Fetch Evidence" button to work correctly.
