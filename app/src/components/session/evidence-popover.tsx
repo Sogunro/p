@@ -9,12 +9,21 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { StickyNote, Evidence, EvidenceBank } from '@/types/database'
 
+type SourceSystem = 'manual' | 'slack' | 'notion' | 'airtable'
+
 interface EvidencePopoverProps {
   noteId: string
   note: StickyNote & { evidence: Evidence[]; linked_evidence?: EvidenceBank[] }
   position: { x: number; y: number }
   onClose: () => void
-  onAddEvidence: (evidence: { type: 'url' | 'text'; url?: string; content?: string; title?: string; strength?: 'high' | 'medium' | 'low' }) => void
+  onAddEvidence: (evidence: {
+    type: 'url' | 'text'
+    url?: string
+    content?: string
+    title?: string
+    strength?: 'high' | 'medium' | 'low'
+    source_system?: SourceSystem
+  }) => void
   onRemoveEvidence: (evidenceId: string) => void
   onLinkEvidence?: (evidenceBankId: string) => void
   onUnlinkEvidence?: (evidenceBankId: string) => void
@@ -49,6 +58,7 @@ export function EvidencePopover({
   const [text, setText] = useState('')
   const [title, setTitle] = useState('')
   const [strength, setStrength] = useState<'high' | 'medium' | 'low'>('medium')
+  const [source, setSource] = useState<SourceSystem>('manual')
   const [bankEvidence, setBankEvidence] = useState<EvidenceBank[]>([])
   const [bankLoading, setBankLoading] = useState(false)
   const [bankSearch, setBankSearch] = useState('')
@@ -98,15 +108,29 @@ export function EvidencePopover({
 
   const handleAdd = () => {
     if (tab === 'url' && url.trim()) {
-      onAddEvidence({ type: 'url', url: url.trim(), title: title.trim() || undefined, strength })
+      onAddEvidence({
+        type: 'url',
+        url: url.trim(),
+        title: title.trim() || undefined,
+        strength,
+        source_system: source,
+      })
       setUrl('')
       setTitle('')
       setStrength('medium')
+      setSource('manual')
     } else if (tab === 'text' && text.trim()) {
-      onAddEvidence({ type: 'text', content: text.trim(), title: title.trim() || undefined, strength })
+      onAddEvidence({
+        type: 'text',
+        content: text.trim(),
+        title: title.trim() || undefined,
+        strength,
+        source_system: source,
+      })
       setText('')
       setTitle('')
       setStrength('medium')
+      setSource('manual')
     }
   }
 
@@ -178,6 +202,27 @@ export function EvidencePopover({
           </TabsList>
 
           <TabsContent value="url" className="space-y-2 mt-0">
+            {/* Source Selector */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-600">Source</label>
+              <div className="grid grid-cols-4 gap-1">
+                {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSource(s)}
+                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
+                      source === s
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{SOURCE_ICONS[s]}</span>
+                    <span className="capitalize text-[10px]">{s}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <Input
               placeholder="Title (optional)"
               value={title}
@@ -193,6 +238,27 @@ export function EvidencePopover({
           </TabsContent>
 
           <TabsContent value="text" className="space-y-2 mt-0">
+            {/* Source Selector */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-600">Source</label>
+              <div className="grid grid-cols-4 gap-1">
+                {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSource(s)}
+                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
+                      source === s
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{SOURCE_ICONS[s]}</span>
+                    <span className="capitalize text-[10px]">{s}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
             <Input
               placeholder="Title (optional)"
               value={title}

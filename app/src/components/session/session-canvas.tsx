@@ -18,7 +18,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { StickyNote } from './sticky-note'
 import { SectionContainer } from './section-container'
 import { EvidencePopover } from './evidence-popover'
-import type { Session, Section, StickyNote as StickyNoteType, Evidence } from '@/types/database'
+import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank } from '@/types/database'
+
+type SourceSystem = 'manual' | 'slack' | 'notion' | 'airtable'
 
 interface SessionData extends Session {
   templates: { name: string } | null
@@ -29,7 +31,7 @@ interface SessionData extends Session {
     constraints: { id: string; label: string; value: string | null; type: string }
   }[]
   sections: (Section & {
-    sticky_notes: (StickyNoteType & { evidence: Evidence[] })[]
+    sticky_notes: (StickyNoteType & { evidence: Evidence[]; linked_evidence?: EvidenceBank[] })[]
   })[]
 }
 
@@ -271,7 +273,39 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
     setEvidencePosition({ x: rect.right + 10, y: rect.top })
   }
 
-  const handleAddEvidence = async (noteId: string, evidence: { type: 'url' | 'text'; url?: string; content?: string; title?: string; strength?: 'high' | 'medium' | 'low' }) => {
+  const handleAddEvidence = async (noteId: string, evidence: {
+    type: 'url' | 'text'
+    url?: string
+    content?: string
+    title?: string
+    strength?: 'high' | 'medium' | 'low'
+    source_system?: SourceSystem
+  }) => {
+    // 1. Save to Evidence Bank first
+    let bankItem: EvidenceBank | null = null
+    try {
+      const bankResponse = await fetch('/api/evidence-bank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: evidence.title || (evidence.type === 'url' ? evidence.url : 'Text Evidence'),
+          type: evidence.type,
+          url: evidence.url,
+          content: evidence.content,
+          strength: evidence.strength || 'medium',
+          source_system: evidence.source_system || 'manual',
+        }),
+      })
+
+      if (bankResponse.ok) {
+        const bankData = await bankResponse.json()
+        bankItem = bankData.evidence
+      }
+    } catch (error) {
+      console.error('Failed to save to Evidence Bank:', error)
+    }
+
+    // 2. Save to direct evidence table (for backward compatibility)
     const { data, error } = await supabase
       .from('evidence')
       .insert({
@@ -285,6 +319,23 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       .select()
       .single()
 
+    // 3. Link bank item to sticky note
+    if (bankItem) {
+      try {
+        await fetch('/api/evidence-bank/link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            stickyNoteId: noteId,
+            evidenceBankId: bankItem.id,
+          }),
+        })
+      } catch (error) {
+        console.error('Failed to link evidence to note:', error)
+      }
+    }
+
+    // 4. Update state
     if (!error && data) {
       await supabase
         .from('sticky_notes')
@@ -297,7 +348,14 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           ...s,
           sticky_notes: s.sticky_notes.map((n) =>
             n.id === noteId
-              ? { ...n, evidence: [...n.evidence, data], has_evidence: true }
+              ? {
+                  ...n,
+                  evidence: [...n.evidence, data],
+                  has_evidence: true,
+                  linked_evidence: bankItem
+                    ? [...(n.linked_evidence || []), bankItem]
+                    : n.linked_evidence,
+                }
               : n
           ),
         })),
@@ -321,6 +379,75 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         }),
       })),
     }))
+  }
+
+  const handleLinkEvidence = async (noteId: string, evidenceBankId: string) => {
+    try {
+      const response = await fetch('/api/evidence-bank/link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stickyNoteId: noteId, evidenceBankId }),
+      })
+
+      if (response.ok) {
+        // Fetch the bank item to add to local state
+        const bankResponse = await fetch(`/api/evidence-bank?id=${evidenceBankId}`)
+        let bankItem: EvidenceBank | null = null
+        if (bankResponse.ok) {
+          const data = await bankResponse.json()
+          // Find the specific item from the list
+          bankItem = data.evidence?.find((e: EvidenceBank) => e.id === evidenceBankId) || null
+        }
+
+        setSession((prev) => ({
+          ...prev,
+          sections: prev.sections.map((s) => ({
+            ...s,
+            sticky_notes: s.sticky_notes.map((n) =>
+              n.id === noteId
+                ? {
+                    ...n,
+                    has_evidence: true,
+                    linked_evidence: bankItem
+                      ? [...(n.linked_evidence || []), bankItem]
+                      : n.linked_evidence,
+                  }
+                : n
+            ),
+          })),
+        }))
+      }
+    } catch (error) {
+      console.error('Failed to link evidence:', error)
+    }
+  }
+
+  const handleUnlinkEvidence = async (noteId: string, evidenceBankId: string) => {
+    try {
+      await fetch(`/api/evidence-bank/link?stickyNoteId=${noteId}&evidenceBankId=${evidenceBankId}`, {
+        method: 'DELETE',
+      })
+
+      setSession((prev) => ({
+        ...prev,
+        sections: prev.sections.map((s) => ({
+          ...s,
+          sticky_notes: s.sticky_notes.map((n) => {
+            if (n.id === noteId) {
+              const newLinked = (n.linked_evidence || []).filter((e) => e.id !== evidenceBankId)
+              return {
+                ...n,
+                linked_evidence: newLinked,
+                has_evidence: n.evidence.length > 0 || newLinked.length > 0,
+              }
+            }
+            return n
+          }),
+        })),
+      }))
+    } catch (error) {
+      console.error('Failed to unlink evidence:', error)
+    }
   }
 
   const handleToggleChecklist = async (itemId: string, checked: boolean) => {
@@ -754,6 +881,8 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           onClose={() => setActiveEvidenceNote(null)}
           onAddEvidence={(evidence) => handleAddEvidence(activeEvidenceNote, evidence)}
           onRemoveEvidence={(evidenceId) => handleRemoveEvidence(activeEvidenceNote, evidenceId)}
+          onLinkEvidence={(evidenceBankId) => handleLinkEvidence(activeEvidenceNote, evidenceBankId)}
+          onUnlinkEvidence={(evidenceBankId) => handleUnlinkEvidence(activeEvidenceNote, evidenceBankId)}
         />
       )}
 
