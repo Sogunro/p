@@ -59,16 +59,24 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Format evidence for n8n analysis
-    const evidencePayload = evidenceItems.map(item => ({
+    // Filter to only items with URLs (n8n will fetch content from these)
+    const evidenceWithUrls = evidenceItems.filter(item => item.url)
+
+    if (evidenceWithUrls.length === 0) {
+      return NextResponse.json({
+        success: false,
+        message: 'No evidence with URLs found. Add URLs to your evidence for n8n to fetch.',
+        evidenceCount: evidenceItems.length,
+        urlCount: 0,
+      })
+    }
+
+    // Format evidence for n8n - only send URL and source_type
+    // n8n will fetch the actual content from these URLs
+    const evidencePayload = evidenceWithUrls.map(item => ({
       id: item.id,
-      title: item.title,
-      content: item.content,
+      source_type: item.source_system,
       url: item.url,
-      type: item.type,
-      source_system: item.source_system,
-      strength: item.strength,
-      created_at: item.created_at,
     }))
 
     // Check if N8N_TRIGGER_URL is configured
@@ -86,7 +94,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Send evidence to n8n for analysis
+    // Send evidence URLs to n8n for fetching and analysis
     const n8nResponse = await fetch(n8nTriggerUrl, {
       method: 'POST',
       headers: {
@@ -97,7 +105,7 @@ export async function POST(request: NextRequest) {
         workspace_id: membership.workspace_id,
         session_id: sessionId || null,
         callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhook/insights`,
-        evidence_count: evidenceItems.length,
+        evidence_count: evidenceWithUrls.length,
         evidence: evidencePayload,
       }),
     })
@@ -119,8 +127,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Sent ${evidenceItems.length} evidence items to n8n for analysis`,
-      evidenceCount: evidenceItems.length,
+      message: `Sent ${evidenceWithUrls.length} evidence URLs to n8n for fetching`,
+      evidenceCount: evidenceWithUrls.length,
       workspaceId: membership.workspace_id,
       sessionId: sessionId || null,
     })
