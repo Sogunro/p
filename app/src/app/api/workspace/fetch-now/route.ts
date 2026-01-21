@@ -43,15 +43,102 @@ export async function POST(request: NextRequest) {
 
     const { data: evidenceItems, error: evidenceError } = await query
 
+    console.log('Evidence bank query result:', {
+      count: evidenceItems?.length || 0,
+      workspaceId: membership.workspace_id,
+      lookbackDate: lookbackDate.toISOString(),
+      error: evidenceError?.message
+    })
+
     if (evidenceError) {
-      console.error('Failed to fetch evidence:', evidenceError)
-      return NextResponse.json({
-        error: 'Failed to fetch evidence from bank',
-        details: evidenceError.message,
-      }, { status: 500 })
+      console.error('Failed to fetch evidence from bank:', evidenceError)
+      // Don't return error yet - we'll also try direct evidence table
     }
 
-    if (!evidenceItems || evidenceItems.length === 0) {
+    // Also query direct evidence from sticky notes
+    // First, get all session IDs for this user (sessions have workspace_id)
+    const { data: userSessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('user_id', user.id)
+
+    const sessionIds = (userSessions || []).map(s => s.id)
+
+    let workspaceDirectEvidence: any[] = []
+
+    if (sessionIds.length > 0) {
+      // Get sections for these sessions
+      const { data: userSections } = await supabase
+        .from('sections')
+        .select('id')
+        .in('session_id', sessionIds)
+
+      const sectionIds = (userSections || []).map(s => s.id)
+
+      if (sectionIds.length > 0) {
+        // Get sticky notes for these sections
+        const { data: userNotes } = await supabase
+          .from('sticky_notes')
+          .select('id')
+          .in('section_id', sectionIds)
+
+        const noteIds = (userNotes || []).map(n => n.id)
+
+        if (noteIds.length > 0) {
+          // Finally, get evidence for these sticky notes
+          const { data: directEvidence, error: directError } = await supabase
+            .from('evidence')
+            .select('id, type, url, title, created_at')
+            .in('sticky_note_id', noteIds)
+            .not('url', 'is', null)
+            .gte('created_at', lookbackDate.toISOString())
+            .order('created_at', { ascending: false })
+
+          if (directError) {
+            console.error('Failed to fetch direct evidence:', directError)
+          } else {
+            workspaceDirectEvidence = directEvidence || []
+          }
+        }
+      }
+    }
+
+    console.log('Direct evidence found:', workspaceDirectEvidence.length)
+
+    // Combine evidence from both sources
+    const bankWithUrls = (evidenceItems || []).filter(item => item.url)
+
+    // Merge and deduplicate by URL
+    const seenUrls = new Set<string>()
+    const allEvidence: { id: string; source_type: string; url: string }[] = []
+
+    // Add bank evidence first (has source_system)
+    for (const item of bankWithUrls) {
+      if (item.url && !seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        allEvidence.push({
+          id: item.id,
+          source_type: item.source_system || 'manual',
+          url: item.url,
+        })
+      }
+    }
+
+    // Add direct evidence (all manual source type)
+    for (const item of workspaceDirectEvidence) {
+      if (item.url && !seenUrls.has(item.url)) {
+        seenUrls.add(item.url)
+        allEvidence.push({
+          id: item.id,
+          source_type: 'manual',
+          url: item.url,
+        })
+      }
+    }
+
+    // Check if we found any evidence
+    const totalFound = (evidenceItems?.length || 0) + workspaceDirectEvidence.length
+    if (totalFound === 0) {
       return NextResponse.json({
         success: false,
         message: 'No evidence found in the specified time range',
@@ -59,25 +146,17 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Filter to only items with URLs (n8n will fetch content from these)
-    const evidenceWithUrls = evidenceItems.filter(item => item.url)
-
-    if (evidenceWithUrls.length === 0) {
+    if (allEvidence.length === 0) {
       return NextResponse.json({
         success: false,
         message: 'No evidence with URLs found. Add URLs to your evidence for n8n to fetch.',
-        evidenceCount: evidenceItems.length,
+        evidenceCount: totalFound,
         urlCount: 0,
       })
     }
 
-    // Format evidence for n8n - only send URL and source_type
-    // n8n will fetch the actual content from these URLs
-    const evidencePayload = evidenceWithUrls.map(item => ({
-      id: item.id,
-      source_type: item.source_system,
-      url: item.url,
-    }))
+    // Use allEvidence as the payload
+    const evidencePayload = allEvidence
 
     // Check if N8N_TRIGGER_URL is configured
     const n8nTriggerUrl = process.env.N8N_TRIGGER_URL
@@ -88,7 +167,7 @@ export async function POST(request: NextRequest) {
         success: false,
         message: 'n8n trigger URL not configured',
         manualSetup: true,
-        evidenceCount: evidenceItems.length,
+        evidenceCount: allEvidence.length,
         evidence: evidencePayload,
         webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.vercel.app'}/api/webhook/insights`,
       })
@@ -105,7 +184,7 @@ export async function POST(request: NextRequest) {
         workspace_id: membership.workspace_id,
         session_id: sessionId || null,
         callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhook/insights`,
-        evidence_count: evidenceWithUrls.length,
+        evidence_count: allEvidence.length,
         evidence: evidencePayload,
       }),
     })
@@ -127,8 +206,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Sent ${evidenceWithUrls.length} evidence URLs to n8n for fetching`,
-      evidenceCount: evidenceWithUrls.length,
+      message: `Sent ${allEvidence.length} evidence URLs to n8n for fetching`,
+      evidenceCount: allEvidence.length,
       workspaceId: membership.workspace_id,
       sessionId: sessionId || null,
     })
