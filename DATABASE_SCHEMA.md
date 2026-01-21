@@ -320,3 +320,217 @@ INSERT INTO templates (id, name, description, is_system) VALUES
 4. Budget
 5. Timeline
 6. Technical Limitations
+
+---
+
+## Phase 2+ Tables (Added for Evidence Bank & Workspaces)
+
+### [2026-01-21] workspaces
+
+Multi-tenant workspace support.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| name | text | NOT NULL | Workspace name |
+| created_by | uuid | FK → profiles | Owner |
+| created_at | timestamptz | DEFAULT now() | |
+| updated_at | timestamptz | DEFAULT now() | |
+
+---
+
+### [2026-01-21] workspace_members
+
+Workspace membership.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| workspace_id | uuid | FK → workspaces, NOT NULL | |
+| user_id | uuid | FK → profiles, NOT NULL | |
+| role | text | DEFAULT 'member' | owner, admin, member |
+| joined_at | timestamptz | DEFAULT now() | |
+
+**Unique constraint:** (workspace_id, user_id)
+
+---
+
+### [2026-01-21] evidence_bank
+
+Centralized evidence storage for workspace.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| workspace_id | uuid | FK → workspaces, NOT NULL | |
+| title | text | NOT NULL | Evidence title |
+| type | text | NOT NULL | 'url' or 'text' |
+| url | text | | URL for URL-type evidence |
+| content | text | | Text content for text-type |
+| strength | text | DEFAULT 'medium' | high, medium, low |
+| source_system | text | DEFAULT 'manual' | manual, slack, notion, mixpanel, airtable |
+| source_metadata | jsonb | DEFAULT '{}' | Extra source data |
+| tags | text[] | DEFAULT '{}' | Tags array |
+| created_by | uuid | FK → profiles | User who added it |
+| created_at | timestamptz | DEFAULT now() | |
+| updated_at | timestamptz | DEFAULT now() | |
+
+---
+
+### [2026-01-21] sticky_note_evidence_links
+
+Links evidence bank items to sticky notes.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| sticky_note_id | uuid | FK → sticky_notes, NOT NULL | |
+| evidence_bank_id | uuid | FK → evidence_bank, NOT NULL | |
+| linked_at | timestamptz | DEFAULT now() | |
+
+**Unique constraint:** (sticky_note_id, evidence_bank_id)
+
+---
+
+### [2026-01-21] insights_feed
+
+Fetched insights from external sources (pre-bank).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| workspace_id | uuid | FK → workspaces, NOT NULL | |
+| source_system | text | NOT NULL | slack, notion, mixpanel, airtable |
+| title | text | NOT NULL | Insight title |
+| content | text | | Insight content |
+| url | text | | Source URL |
+| strength | text | DEFAULT 'medium' | high, medium, low |
+| source_metadata | jsonb | DEFAULT '{}' | |
+| is_added_to_bank | boolean | DEFAULT false | Already in bank? |
+| is_dismissed | boolean | DEFAULT false | User dismissed |
+| fetched_at | timestamptz | DEFAULT now() | |
+| created_at | timestamptz | DEFAULT now() | |
+| ai_summary | text | | AI-generated summary |
+| ai_themes | jsonb | DEFAULT '[]' | AI-detected themes |
+| ai_action_items | jsonb | DEFAULT '[]' | AI-suggested actions |
+| source_url | text | | Original source URL |
+| pain_points | jsonb | DEFAULT '[]' | |
+| feature_requests | jsonb | DEFAULT '[]' | |
+| sentiment | text | | positive, negative, neutral |
+| key_quotes | jsonb | DEFAULT '[]' | |
+| tags | jsonb | DEFAULT '[]' | |
+| analysis_id | uuid | FK → daily_insights_analysis | |
+
+---
+
+### [2026-01-21] workspace_settings
+
+Workspace-level settings.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| workspace_id | uuid | FK → workspaces, UNIQUE, NOT NULL | |
+| slack_enabled | boolean | DEFAULT false | |
+| notion_enabled | boolean | DEFAULT false | |
+| mixpanel_enabled | boolean | DEFAULT false | |
+| airtable_enabled | boolean | DEFAULT false | |
+| last_fetch_at | timestamptz | | Last n8n fetch time |
+| created_at | timestamptz | DEFAULT now() | |
+| updated_at | timestamptz | DEFAULT now() | |
+
+---
+
+### [2026-01-21] workspace_evidence_sources
+
+Per-source configuration for evidence fetching.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| workspace_id | uuid | FK → workspaces, UNIQUE, NOT NULL | |
+| slack_enabled | boolean | DEFAULT false | |
+| slack_channel_ids | text[] | DEFAULT '{}' | Slack channel IDs |
+| notion_enabled | boolean | DEFAULT false | |
+| notion_database_ids | text[] | DEFAULT '{}' | Notion database IDs |
+| airtable_enabled | boolean | DEFAULT false | |
+| airtable_sources | jsonb | DEFAULT '[]' | [{base_id, table_id}] |
+| mixpanel_enabled | boolean | DEFAULT false | |
+| auto_fetch_enabled | boolean | DEFAULT false | |
+| auto_fetch_time | time | DEFAULT '18:00' | |
+| lookback_hours | integer | DEFAULT 24 | |
+| created_at | timestamptz | DEFAULT now() | |
+| updated_at | timestamptz | DEFAULT now() | |
+
+---
+
+### [2026-01-21] daily_insights_analysis
+
+AI analysis of daily insights.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| id | uuid | PK, DEFAULT gen_random_uuid() | |
+| workspace_id | uuid | FK → workspaces, NOT NULL | |
+| analysis_date | date | NOT NULL | |
+| insight_count | integer | DEFAULT 0 | |
+| sources_included | text[] | DEFAULT '{}' | |
+| summary | text | | AI summary |
+| themes | jsonb | DEFAULT '[]' | |
+| patterns | jsonb | DEFAULT '[]' | |
+| priorities | jsonb | DEFAULT '[]' | |
+| cross_source_connections | jsonb | DEFAULT '[]' | |
+| action_items | jsonb | DEFAULT '[]' | |
+| raw_response | jsonb | | Full AI response |
+| created_at | timestamptz | DEFAULT now() | |
+| updated_at | timestamptz | DEFAULT now() | |
+
+**Unique constraint:** (workspace_id, analysis_date)
+
+---
+
+## n8n Integration Configuration
+
+### [2026-01-21] Environment Variables Required
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| N8N_TRIGGER_URL | n8n webhook URL for evidence fetch | `https://toluwase94.app.n8n.cloud/webhook/evidence-fetch-immediately` |
+| N8N_WEBHOOK_SECRET | Secret for webhook auth | `pdt-evidence-secret-2026` |
+| NEXT_PUBLIC_APP_URL | App URL for callback | `https://pm-product-tool.vercel.app` |
+
+### n8n Webhook Endpoints
+
+| Path | Purpose | Trigger |
+|------|---------|---------|
+| `/webhook/evidence-fetch-immediately` | Manual "Fetch Now" button | User action |
+| `/webhook/evidence-fetch-scheduled` | Scheduled daily fetch | Cron schedule |
+
+### App Callback Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/webhook/insights` | POST | Receives fetched insights from n8n |
+| `/api/workspace/fetch-now` | POST | Triggers n8n fetch |
+| `/api/workspace/fetch-now` | GET | Get fetch status |
+
+---
+
+## Entity Relationship Update
+
+```
+workspaces
+    │
+    ├──< workspace_members >── profiles
+    ├──< workspace_settings
+    ├──< workspace_evidence_sources
+    ├──< evidence_bank
+    │       │
+    │       └──< sticky_note_evidence_links >── sticky_notes
+    │
+    ├──< insights_feed
+    │       │
+    │       └──< daily_insights_analysis
+    │
+    └──< sessions (via workspace_id in profiles)
+```

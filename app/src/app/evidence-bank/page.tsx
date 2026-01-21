@@ -408,11 +408,19 @@ export default function EvidenceBankPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-5 gap-4 mb-6">
           <Card>
             <CardContent className="pt-4">
               <p className="text-2xl font-bold">{evidence.length}</p>
               <p className="text-sm text-gray-500">Total Evidence</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-2xl font-bold text-purple-600">
+                {evidence.filter(e => e.source_system === 'manual').length}
+              </p>
+              <p className="text-sm text-gray-500">✏️ Manual</p>
             </CardContent>
           </Card>
           <Card>
@@ -440,6 +448,26 @@ export default function EvidenceBankPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Manually Added Evidence Section - For Session-Added Evidence */}
+        {evidence.filter(e => e.source_system === 'manual').length > 0 && filterSource === 'all' && (
+          <Card className="mb-6 border-purple-200 bg-purple-50/50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <span>✏️</span>
+                  Manually Added Evidence
+                  <Badge variant="secondary" className="bg-purple-100 text-purple-700">
+                    {evidence.filter(e => e.source_system === 'manual').length}
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-gray-500">
+                  Evidence added from sessions or manually entered
+                </p>
+              </div>
+            </CardHeader>
+          </Card>
+        )}
 
         {/* Pending Insights Section - Unfetched Evidence */}
         {pendingInsights.length > 0 && (
@@ -553,6 +581,11 @@ export default function EvidenceBankPage() {
                         <Badge className={STRENGTH_COLORS[item.strength]}>
                           {item.strength}
                         </Badge>
+                        {item.source_system === 'manual' && (
+                          <Badge variant="outline" className="text-purple-600 border-purple-300 bg-purple-50 text-xs">
+                            Session Added
+                          </Badge>
+                        )}
                       </div>
                       {item.content && (
                         <p className="text-sm text-gray-600 mb-2 line-clamp-2">{item.content}</p>
