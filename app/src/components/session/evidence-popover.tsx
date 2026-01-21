@@ -202,27 +202,29 @@ export function EvidencePopover({
           </TabsList>
 
           <TabsContent value="url" className="space-y-2 mt-0">
-            {/* Source Selector */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-600">Source</label>
-              <div className="grid grid-cols-4 gap-1">
-                {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSource(s)}
-                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
-                      source === s
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span>{SOURCE_ICONS[s]}</span>
-                    <span className="capitalize text-[10px]">{s}</span>
-                  </button>
-                ))}
+            {/* Source Selector - Only show if no evidence exists yet */}
+            {note.evidence.length === 0 && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Source</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSource(s)}
+                      className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
+                        source === s
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>{SOURCE_ICONS[s]}</span>
+                      <span className="capitalize text-[10px]">{s}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <Input
               placeholder="Title (optional)"
               value={title}
@@ -238,27 +240,29 @@ export function EvidencePopover({
           </TabsContent>
 
           <TabsContent value="text" className="space-y-2 mt-0">
-            {/* Source Selector */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-gray-600">Source</label>
-              <div className="grid grid-cols-4 gap-1">
-                {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setSource(s)}
-                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
-                      source === s
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span>{SOURCE_ICONS[s]}</span>
-                    <span className="capitalize text-[10px]">{s}</span>
-                  </button>
-                ))}
+            {/* Source Selector - Only show if no evidence exists yet */}
+            {note.evidence.length === 0 && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-gray-600">Source</label>
+                <div className="grid grid-cols-4 gap-1">
+                  {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSource(s)}
+                      className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
+                        source === s
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span>{SOURCE_ICONS[s]}</span>
+                      <span className="capitalize text-[10px]">{s}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
             <Input
               placeholder="Title (optional)"
               value={title}

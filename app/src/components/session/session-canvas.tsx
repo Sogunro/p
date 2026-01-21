@@ -300,6 +300,10 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       if (bankResponse.ok) {
         const bankData = await bankResponse.json()
         bankItem = bankData.evidence
+        console.log('Saved to Evidence Bank:', bankItem)
+      } else {
+        const errorData = await bankResponse.json()
+        console.error('Failed to save to Evidence Bank:', bankResponse.status, errorData)
       }
     } catch (error) {
       console.error('Failed to save to Evidence Bank:', error)
@@ -705,6 +709,33 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           <Button variant="outline" size="sm" onClick={handleAddSection}>
             + Section
           </Button>
+          {/* Fetch Evidence Button - Show if there are evidence-backed notes */}
+          {evidenceCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchEvidenceNow}
+              disabled={isFetchingEvidence}
+              className="flex items-center gap-1"
+            >
+              {isFetchingEvidence ? (
+                <>
+                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Fetching...
+                </>
+              ) : (
+                <>
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Fetch Evidence
+                </>
+              )}
+            </Button>
+          )}
           <Button onClick={handleOpenAnalyzeDialog} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze Session'}
           </Button>
@@ -1136,11 +1167,31 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
             </div>
           </div>
 
+          {/* Warning if evidence notes exist but not recently fetched */}
+          {evidenceCount > 0 && !lastFetchAt && analyzeWithEvidence && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-yellow-800">Evidence not fetched</p>
+                  <p className="text-yellow-700 text-xs">
+                    You have {evidenceCount} evidence-backed notes. Fetch evidence first for better analysis, or analyze without evidence.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="outline" onClick={() => setShowAnalyzeDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleStartAnalysis} disabled={isAnalyzing}>
+            <Button
+              onClick={handleStartAnalysis}
+              disabled={isAnalyzing || (evidenceCount > 0 && !lastFetchAt && analyzeWithEvidence)}
+            >
               {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
             </Button>
           </div>

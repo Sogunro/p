@@ -313,9 +313,6 @@ export default function EvidenceBankPage() {
               <Link href="/insights">
                 <Button variant="outline">View Insights Feed</Button>
               </Link>
-              <Link href="/settings/insights-schedule">
-                <Button variant="outline">Configure Sources</Button>
-              </Link>
               <Button
                 variant="outline"
                 onClick={() => setShowFetchDialog(true)}
@@ -532,14 +529,9 @@ export default function EvidenceBankPage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 pt-3 border-t flex justify-between items-center">
+                <div className="mt-3 pt-3 border-t">
                   <Link href="/insights" className="text-sm text-blue-600 hover:underline">
                     View all in Insights Feed →
-                  </Link>
-                  <Link href="/settings/insights-schedule">
-                    <Button variant="outline" size="sm">
-                      Configure Sources
-                    </Button>
                   </Link>
                 </div>
               </CardContent>
