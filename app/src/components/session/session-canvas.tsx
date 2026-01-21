@@ -498,7 +498,8 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
     success: boolean
     message: string
   } | null>(null)
-  const [enabledSources, setEnabledSources] = useState<string[]>([])
+  const [totalEvidence, setTotalEvidence] = useState(0)
+  const [recentEvidence, setRecentEvidence] = useState(0)
   const [lastFetchAt, setLastFetchAt] = useState<string | null>(null)
 
   // Fetch evidence status when opening analyze dialog
@@ -507,7 +508,8 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       const response = await fetch('/api/workspace/fetch-now')
       if (response.ok) {
         const data = await response.json()
-        setEnabledSources(data.enabledSources || [])
+        setTotalEvidence(data.totalEvidence || 0)
+        setRecentEvidence(data.recentEvidence || 0)
         setLastFetchAt(data.lastFetchAt)
       }
     } catch (error) {
@@ -530,7 +532,6 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sources: enabledSources,
           sessionId: session.id,
         }),
       })
@@ -543,10 +544,15 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           message: data.message,
         })
         setLastFetchAt(new Date().toISOString())
+      } else if (data.evidenceCount === 0) {
+        setFetchEvidenceResult({
+          success: false,
+          message: 'No evidence found in the Evidence Bank. Add evidence to sticky notes first.',
+        })
       } else {
         setFetchEvidenceResult({
           success: false,
-          message: data.error || data.message || 'Failed to fetch evidence',
+          message: data.error || data.message || 'Failed to send evidence for analysis',
         })
       }
     } catch (error) {
@@ -1039,43 +1045,39 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
             {/* Evidence status */}
             <div className="bg-muted/50 rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Evidence Status</span>
+                <span className="text-sm font-medium">Evidence Bank Status</span>
                 {lastFetchAt ? (
                   <span className="text-xs text-muted-foreground">
-                    Last fetched: {new Date(lastFetchAt).toLocaleString()}
+                    Last analyzed: {new Date(lastFetchAt).toLocaleString()}
                   </span>
                 ) : (
-                  <span className="text-xs text-yellow-600">Never fetched</span>
+                  <span className="text-xs text-yellow-600">Never analyzed</span>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Enabled sources:</span>
-                {enabledSources.length > 0 ? (
-                  <div className="flex gap-1">
-                    {enabledSources.map((source) => (
-                      <Badge key={source} variant="secondary" className="text-xs">
-                        {source === 'slack' && '💬'}
-                        {source === 'notion' && '📝'}
-                        {source === 'mixpanel' && '📊'}
-                        {source === 'airtable' && '📋'}
-                        {' '}{source}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-yellow-600 text-xs">None configured</span>
-                )}
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Total:</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {totalEvidence} items
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Last 24h:</span>
+                  <Badge variant={recentEvidence > 0 ? "default" : "secondary"} className="text-xs">
+                    {recentEvidence} items
+                  </Badge>
+                </div>
               </div>
             </div>
 
-            {/* Fetch evidence option */}
-            {enabledSources.length > 0 && (
+            {/* Send evidence to n8n for analysis */}
+            {totalEvidence > 0 && (
               <div className="border rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="font-medium text-sm">Fetch Latest Evidence</h4>
+                    <h4 className="font-medium text-sm">Analyze Evidence</h4>
                     <p className="text-xs text-muted-foreground">
-                      Get the most recent insights from your connected sources
+                      Send {recentEvidence > 0 ? recentEvidence : totalEvidence} evidence items to n8n for AI analysis
                     </p>
                   </div>
                   <Button
@@ -1091,14 +1093,14 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        Fetching...
+                        Sending...
                       </>
                     ) : (
                       <>
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
-                        Fetch Now
+                        Analyze Now
                       </>
                     )}
                   </Button>
