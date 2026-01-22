@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
         manualSetup: true,
         evidenceCount: allEvidence.length,
         evidence: evidencePayload,
-        webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.vercel.app'}/api/webhook/insights`,
+        webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-app.vercel.app'}/api/webhook/evidence-content`,
       })
     }
 
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         workspace_id: membership.workspace_id,
         session_id: sessionId || null,
-        callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhook/insights`,
+        callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhook/evidence-content`,
         evidence_count: allEvidence.length,
         evidence: evidencePayload,
       }),

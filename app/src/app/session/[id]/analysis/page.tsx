@@ -285,6 +285,11 @@ export default async function AnalysisPage({ params }: PageProps) {
           <Link href={`/session/${id}`}>
             <Button variant="outline">Back to Session</Button>
           </Link>
+          <Link href={`/session/${id}/validation`}>
+            <Button variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50">
+              Open Validation Portal
+            </Button>
+          </Link>
           <Link href="/dashboard">
             <Button>Go to Dashboard</Button>
           </Link>

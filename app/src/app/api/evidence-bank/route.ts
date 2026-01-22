@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, type, url, content, strength, tags, source_system } = body
+    const { title, type, url, content, strength, tags, source_system, fetch_status } = body
 
     if (!title || !type) {
       return NextResponse.json({ error: 'Title and type are required' }, { status: 400 })
@@ -82,6 +82,8 @@ export async function POST(request: NextRequest) {
         source_system: source_system || 'manual',
         tags: tags || [],
         created_by: user.id,
+        // Mark as unfetched by default for URL type evidence
+        fetch_status: fetch_status || (type === 'url' ? 'unfetched' : null),
       })
       .select()
       .single()

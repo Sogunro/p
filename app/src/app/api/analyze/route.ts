@@ -89,6 +89,41 @@ export async function POST(request: NextRequest) {
       .select('*')
       .or(`source_note_id.in.(${allNoteIds.join(',')}),target_note_id.in.(${allNoteIds.join(',')})`)
 
+    // Fetch linked evidence_bank items with fetched content
+    const { data: linkedEvidenceData } = await supabase
+      .from('sticky_note_evidence_links')
+      .select('sticky_note_id, evidence_bank:evidence_bank_id(*)')
+      .in('sticky_note_id', allNoteIds)
+
+    // Create a map of note IDs to their linked evidence bank items
+    const linkedEvidenceMap = new Map<string, Array<{
+      id: string
+      title: string
+      url: string | null
+      content: string | null
+      fetched_content: string | null
+      fetch_status: string | null
+      source_system: string
+      strength: string
+    }>>()
+
+    ;(linkedEvidenceData || []).forEach((link: { sticky_note_id: string; evidence_bank: unknown }) => {
+      const bank = link.evidence_bank as {
+        id: string
+        title: string
+        url: string | null
+        content: string | null
+        fetched_content: string | null
+        fetch_status: string | null
+        source_system: string
+        strength: string
+      } | null
+      if (bank) {
+        const existing = linkedEvidenceMap.get(link.sticky_note_id) || []
+        linkedEvidenceMap.set(link.sticky_note_id, [...existing, bank])
+      }
+    })
+
     // Create a map of note IDs to their content for link resolution
     const noteMap = new Map<string, { content: string; section: string }>()
     session.sections.forEach((section: { name: string; sticky_notes: { id: string; content: string }[] }) => {
@@ -109,18 +144,36 @@ export async function POST(request: NextRequest) {
     }))
 
     const stickyNotes = session.sections.flatMap((section: { name: string; sticky_notes: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }[] }[] }) =>
-      section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }[] }) => ({
-        id: note.id,
-        section: section.name,
-        content: note.content,
-        hasEvidence: note.has_evidence,
-        evidence: note.evidence.map((e: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }) => ({
-          type: e.type,
-          source: e.type === 'url' ? e.url : e.content,
-          title: e.title,
-          strength: e.strength || 'medium',
-        })),
-      }))
+      section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }[] }) => {
+        // Get linked evidence from evidence_bank (with fetched content)
+        const linkedEvidence = linkedEvidenceMap.get(note.id) || []
+
+        return {
+          id: note.id,
+          section: section.name,
+          content: note.content,
+          hasEvidence: note.has_evidence || linkedEvidence.length > 0,
+          // Direct evidence attached to sticky note
+          directEvidence: note.evidence.map((e: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }) => ({
+            type: e.type,
+            url: e.url,
+            content: e.content,
+            title: e.title,
+            strength: e.strength || 'medium',
+          })),
+          // Linked evidence from evidence_bank with fetched content
+          linkedEvidence: linkedEvidence.map(e => ({
+            title: e.title,
+            url: e.url,
+            source_system: e.source_system,
+            strength: e.strength || 'medium',
+            fetch_status: e.fetch_status,
+            // This is the key - include fetched content if available
+            fetched_content: e.fetched_content,
+            original_content: e.content,
+          })),
+        }
+      })
     )
 
     // Process note links into readable format
@@ -148,31 +201,98 @@ CHECKLIST STATUS:
 ${checklistItems.map((c: { item: string; checked: boolean }) => `- [${c.checked ? 'x' : ' '}] ${c.item}`).join('\n')}
 
 STICKY NOTES BY SECTION:
-${stickyNotes.map((note: { section: string; content: string; hasEvidence: boolean; evidence: { type: string; source: string | null; title: string | null; strength: string }[] }) => `
+${stickyNotes.map((note: {
+  section: string
+  content: string
+  hasEvidence: boolean
+  directEvidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string }[]
+  linkedEvidence: { title: string; url: string | null; source_system: string; strength: string; fetch_status: string | null; fetched_content: string | null; original_content: string | null }[]
+}) => {
+  const totalEvidence = note.directEvidence.length + note.linkedEvidence.length
+  const fetchedCount = note.linkedEvidence.filter(e => e.fetch_status === 'fetched').length
+
+  return `
 [${note.section}] ${note.hasEvidence ? '🟢 EVIDENCE-BACKED' : '🟡 ASSUMPTION'}
 Content: ${note.content}
-${note.evidence.length > 0 ? `Evidence: ${note.evidence.map((e: { title: string | null; source: string | null; strength: string }) => `${e.title || e.source} (Strength: ${e.strength.toUpperCase()})`).join(', ')}` : ''}
-`).join('\n')}
+${totalEvidence > 0 ? `
+EVIDENCE ATTACHED (${totalEvidence} sources${fetchedCount > 0 ? `, ${fetchedCount} with fetched content` : ''}):
+${note.directEvidence.map((e, i) => `
+  ${i + 1}. "${e.title || 'Untitled'}" (${e.type}, Strength: ${e.strength.toUpperCase()})
+     ${e.type === 'url' ? `URL: ${e.url}` : `Content: ${e.content?.substring(0, 200)}...`}
+`).join('')}
+${note.linkedEvidence.map((e, i) => `
+  ${note.directEvidence.length + i + 1}. "${e.title}" (${e.source_system}, Strength: ${e.strength.toUpperCase()})
+     ${e.fetch_status === 'fetched' && e.fetched_content ? `
+     FETCHED CONTENT:
+     ---
+     ${e.fetched_content.substring(0, 2000)}${e.fetched_content.length > 2000 ? '...[truncated]' : ''}
+     ---
+     ` : e.url ? `URL: ${e.url} (NOT FETCHED)` : `Content: ${e.original_content?.substring(0, 200)}...`}
+`).join('')}
+` : ''}
+`
+}).join('\n')}
 
 LINKED NOTES (Related Concepts):
 ${linkedNotes.length > 0 ? linkedNotes.map((link: { from: { content: string; section: string }; to: { content: string; section: string } }) => `- [${link.from.section}] "${link.from.content}" ↔ [${link.to.section}] "${link.to.content}"`).join('\n') : 'No linked notes'}
 
-EVIDENCE STRENGTH GUIDE:
-- HIGH: Customer interviews, user research, analytics data, A/B test results (most reliable)
-- MEDIUM: Surveys, support tickets, competitor analysis (moderately reliable)
-- LOW: Anecdotal feedback, assumptions, internal opinions (least reliable)
+EVIDENCE QUALITY FRAMEWORK:
+- HIGH QUALITY (0.7-0.95 confidence): 3+ independent sources, quantitative data, behavioral evidence
+- MEDIUM QUALITY (0.4-0.6): 1-2 sources, some quantification or specific examples
+- LOW QUALITY (0.2-0.4): Single anecdotal source, no quantification
+- NO EVIDENCE (0.1-0.3): Pure assumption, no evidence attached
 
-Consider evidence strength when assessing confidence levels - items backed by HIGH strength evidence should have higher confidence than those with only LOW strength evidence.
+IMPORTANT: When fetched content is available, analyze the ACTUAL CONTENT to assess evidence quality. Look for:
+- Specific quotes and examples
+- Numbers and metrics
+- Multiple people reporting similar issues
+- Behavioral data vs opinions
+
+ANALYSIS INSTRUCTIONS:
+1. Assess evidence quality for each card using the framework above
+2. Classify problems into 3 tiers by evidence strength:
+   - TIER 1 (Strongly Validated): Confidence 0.6-1.0, multiple independent sources
+   - TIER 2 (Preliminary Evidence): Confidence 0.3-0.6, 1-2 sources, needs validation
+   - TIER 3 (Assumptions): Confidence 0-0.3, no evidence, validate first
+3. Score strategic alignment against constraints
+4. For items needing validation, provide specific validation strategies
 
 Provide your analysis in the following JSON format:
 {
   "objective_score": <0-100 score on how well objectives were addressed>,
   "summary": "<2-3 sentence overall summary>",
-  "assumptions": [
-    {"content": "<assumption>", "section": "<section name>"}
+  "session_diagnosis": {
+    "overall_quality": "<excellent/good/fair/poor>",
+    "evidence_maturity": "<strong/medium/weak>",
+    "key_strengths": ["<strength 1>", "<strength 2>"],
+    "key_gaps": ["<gap 1>", "<gap 2>"]
+  },
+  "problems_strongly_validated": [
+    {
+      "content": "<problem>",
+      "section": "<section>",
+      "confidence": <0.6-1.0>,
+      "evidence_summary": "<what evidence supports this>",
+      "sources_count": <number>
+    }
   ],
-  "evidence_backed": [
-    {"content": "<evidence-backed item>", "section": "<section name>", "evidence_summary": "<brief description of evidence>"}
+  "problems_with_preliminary_evidence": [
+    {
+      "content": "<problem>",
+      "section": "<section>",
+      "confidence": <0.3-0.6>,
+      "current_evidence": "<what we have>",
+      "validation_needed": "<what's missing>"
+    }
+  ],
+  "problems_assumed": [
+    {
+      "content": "<assumption>",
+      "section": "<section>",
+      "confidence": <0.1-0.3>,
+      "validation_strategy": "<how to validate>",
+      "research_questions": ["<question 1>", "<question 2>"]
+    }
   ],
   "validation_recommendations": [
     {
@@ -180,7 +300,9 @@ Provide your analysis in the following JSON format:
       "confidence": "<low/medium/high>",
       "reason": "<why it needs validation>",
       "method": "<suggested validation method>",
-      "questions": ["<question 1>", "<question 2>"]
+      "questions": ["<question 1>", "<question 2>"],
+      "success_criteria": "<what would prove this>",
+      "sample_size": "<recommended sample size>"
     }
   ],
   "constraint_analysis": [
