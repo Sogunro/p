@@ -143,8 +143,8 @@ export async function POST(request: NextRequest) {
       value: sc.constraints.value,
     }))
 
-    const stickyNotes = session.sections.flatMap((section: { name: string; sticky_notes: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }[] }[] }) =>
-      section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }[] }) => {
+    const stickyNotes = session.sections.flatMap((section: { name: string; sticky_notes: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }[] }[] }) =>
+      section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }[] }) => {
         // Get linked evidence from evidence_bank (with fetched content)
         const linkedEvidence = linkedEvidenceMap.get(note.id) || []
 
@@ -153,13 +153,15 @@ export async function POST(request: NextRequest) {
           section: section.name,
           content: note.content,
           hasEvidence: note.has_evidence || linkedEvidence.length > 0,
-          // Direct evidence attached to sticky note
-          directEvidence: note.evidence.map((e: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null }) => ({
+          // Direct evidence attached to sticky note (now includes fetched_content from Phase 5)
+          directEvidence: note.evidence.map((e: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }) => ({
             type: e.type,
             url: e.url,
             content: e.content,
             title: e.title,
             strength: e.strength || 'medium',
+            fetched_content: e.fetched_content,
+            fetch_status: e.fetch_status,
           })),
           // Linked evidence from evidence_bank with fetched content
           linkedEvidence: linkedEvidence.map(e => ({
@@ -205,20 +207,27 @@ ${stickyNotes.map((note: {
   section: string
   content: string
   hasEvidence: boolean
-  directEvidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string }[]
+  directEvidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string; fetched_content: string | null; fetch_status: string | null }[]
   linkedEvidence: { title: string; url: string | null; source_system: string; strength: string; fetch_status: string | null; fetched_content: string | null; original_content: string | null }[]
 }) => {
   const totalEvidence = note.directEvidence.length + note.linkedEvidence.length
-  const fetchedCount = note.linkedEvidence.filter(e => e.fetch_status === 'fetched').length
+  const directFetchedCount = note.directEvidence.filter(e => e.fetch_status === 'fetched').length
+  const linkedFetchedCount = note.linkedEvidence.filter(e => e.fetch_status === 'fetched').length
+  const totalFetchedCount = directFetchedCount + linkedFetchedCount
 
   return `
 [${note.section}] ${note.hasEvidence ? '🟢 EVIDENCE-BACKED' : '🟡 ASSUMPTION'}
 Content: ${note.content}
 ${totalEvidence > 0 ? `
-EVIDENCE ATTACHED (${totalEvidence} sources${fetchedCount > 0 ? `, ${fetchedCount} with fetched content` : ''}):
+EVIDENCE ATTACHED (${totalEvidence} sources${totalFetchedCount > 0 ? `, ${totalFetchedCount} with fetched content` : ''}):
 ${note.directEvidence.map((e, i) => `
   ${i + 1}. "${e.title || 'Untitled'}" (${e.type}, Strength: ${e.strength.toUpperCase()})
-     ${e.type === 'url' ? `URL: ${e.url}` : `Content: ${e.content?.substring(0, 200)}...`}
+     ${e.fetch_status === 'fetched' && e.fetched_content ? `
+     FETCHED CONTENT:
+     ---
+     ${e.fetched_content.substring(0, 2000)}${e.fetched_content.length > 2000 ? '...[truncated]' : ''}
+     ---
+     ` : e.type === 'url' ? `URL: ${e.url}${e.fetch_status !== 'fetched' ? ' (NOT FETCHED)' : ''}` : `Content: ${e.content?.substring(0, 200)}...`}
 `).join('')}
 ${note.linkedEvidence.map((e, i) => `
   ${note.directEvidence.length + i + 1}. "${e.title}" (${e.source_system}, Strength: ${e.strength.toUpperCase()})
