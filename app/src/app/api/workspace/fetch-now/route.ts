@@ -267,26 +267,86 @@ export async function GET() {
       .single()
 
     // Count evidence in the bank
-    const { count: totalEvidence } = await supabase
+    const { count: bankTotal } = await supabase
       .from('evidence_bank')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', membership.workspace_id)
 
-    // Count evidence from last 24 hours
+    // Count evidence from last 24 hours in bank
     const yesterday = new Date()
     yesterday.setHours(yesterday.getHours() - 24)
-    const { count: recentEvidence } = await supabase
+    const { count: bankRecent } = await supabase
       .from('evidence_bank')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', membership.workspace_id)
       .gte('created_at', yesterday.toISOString())
 
+    // Also count direct evidence from sticky notes (via user's sessions)
+    // Get user's sessions
+    const { data: userSessions } = await supabase
+      .from('sessions')
+      .select('id')
+      .eq('user_id', user.id)
+
+    let directTotal = 0
+    let directRecent = 0
+
+    if (userSessions && userSessions.length > 0) {
+      const sessionIds = userSessions.map(s => s.id)
+
+      // Get sections for these sessions
+      const { data: userSections } = await supabase
+        .from('sections')
+        .select('id')
+        .in('session_id', sessionIds)
+
+      if (userSections && userSections.length > 0) {
+        const sectionIds = userSections.map(s => s.id)
+
+        // Get sticky notes for these sections
+        const { data: userNotes } = await supabase
+          .from('sticky_notes')
+          .select('id')
+          .in('section_id', sectionIds)
+
+        if (userNotes && userNotes.length > 0) {
+          const noteIds = userNotes.map(n => n.id)
+
+          // Count total direct evidence with URLs
+          const { count: directTotalCount } = await supabase
+            .from('evidence')
+            .select('*', { count: 'exact', head: true })
+            .in('sticky_note_id', noteIds)
+            .not('url', 'is', null)
+
+          directTotal = directTotalCount || 0
+
+          // Count recent direct evidence with URLs
+          const { count: directRecentCount } = await supabase
+            .from('evidence')
+            .select('*', { count: 'exact', head: true })
+            .in('sticky_note_id', noteIds)
+            .not('url', 'is', null)
+            .gte('created_at', yesterday.toISOString())
+
+          directRecent = directRecentCount || 0
+        }
+      }
+    }
+
+    // Combine counts from both sources
+    const totalEvidence = (bankTotal || 0) + directTotal
+    const recentEvidence = (bankRecent || 0) + directRecent
+
     return NextResponse.json({
       workspaceId: membership.workspace_id,
       lastFetchAt: settings?.last_fetch_at || null,
       n8nConfigured: !!process.env.N8N_TRIGGER_URL,
-      totalEvidence: totalEvidence || 0,
-      recentEvidence: recentEvidence || 0,
+      totalEvidence,
+      recentEvidence,
+      // Also return breakdown for clarity
+      evidenceBank: { total: bankTotal || 0, recent: bankRecent || 0 },
+      directEvidence: { total: directTotal, recent: directRecent },
     })
   } catch (error) {
     console.error('Fetch status error:', error)
