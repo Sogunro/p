@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
 
     // Merge and deduplicate by URL
     const seenUrls = new Set<string>()
-    const allEvidence: { id: string; source_type: string; url: string }[] = []
+    const allEvidence: { id: string; source_type: string; url: string; table: 'evidence_bank' | 'evidence' }[] = []
 
     // Add bank evidence first (has source_system)
     for (const item of bankWithUrls) {
@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
           id: item.id,
           source_type: item.source_system || detectSourceFromUrl(item.url),
           url: item.url,
+          table: 'evidence_bank',
         })
       }
     }
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
           id: item.id,
           source_type: detectSourceFromUrl(item.url),
           url: item.url,
+          table: 'evidence',
         })
       }
     }

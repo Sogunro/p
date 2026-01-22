@@ -1,5 +1,5 @@
 -- Phase 5: Evidence Fetch Content Storage
--- Adds fields to evidence_bank to store fetched content from n8n
+-- Adds fields to evidence_bank AND evidence tables to store fetched content from n8n
 
 -- Add fetched content fields to evidence_bank
 ALTER TABLE evidence_bank ADD COLUMN IF NOT EXISTS fetched_content TEXT;
@@ -19,3 +19,16 @@ CREATE INDEX IF NOT EXISTS idx_evidence_bank_fetch_status ON evidence_bank(fetch
 
 -- Create index for workspace + fetch_status combo queries
 CREATE INDEX IF NOT EXISTS idx_evidence_bank_workspace_fetch_status ON evidence_bank(workspace_id, fetch_status);
+
+-- Also add fetched content fields to evidence table (direct sticky note evidence)
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS fetched_content TEXT;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS fetch_status TEXT DEFAULT 'unfetched';
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMPTZ;
+
+-- Add comments for evidence table
+COMMENT ON COLUMN evidence.fetched_content IS 'Actual content fetched from the URL by n8n';
+COMMENT ON COLUMN evidence.fetch_status IS 'Status of content fetch: unfetched, fetched, failed';
+COMMENT ON COLUMN evidence.fetched_at IS 'Timestamp when content was successfully fetched';
+
+-- Create index for evidence fetch_status
+CREATE INDEX IF NOT EXISTS idx_evidence_fetch_status ON evidence(fetch_status);

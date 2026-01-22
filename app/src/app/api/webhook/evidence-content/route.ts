@@ -9,6 +9,7 @@ interface FetchedEvidenceItem {
   title: string
   content: string  // THE ACTUAL FETCHED CONTENT
   metadata?: Record<string, unknown>
+  table?: 'evidence_bank' | 'evidence'  // Which table the evidence_id is from
 }
 
 interface FetchedEvidencePayload {
@@ -72,25 +73,51 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const { error: updateError } = await supabase
-        .from('evidence_bank')
-        .update({
-          fetched_content: item.content,
-          fetch_status: 'fetched',
-          fetch_metadata: item.metadata || {},
-          fetched_at: new Date().toISOString(),
-          // Update title if provided and different
-          ...(item.title ? { title: item.title } : {}),
-        })
-        .eq('id', item.evidence_id)
-        .eq('workspace_id', workspace_id)
+      // Determine which table to update based on the 'table' field
+      const targetTable = item.table || 'evidence_bank'
 
-      if (updateError) {
-        console.error(`Failed to update evidence ${item.evidence_id}:`, updateError)
-        results.failed++
-        results.errors.push(`Failed to update ${item.evidence_id}: ${updateError.message}`)
+      if (targetTable === 'evidence_bank') {
+        // Update evidence_bank table (workspace-scoped)
+        const { error: updateError } = await supabase
+          .from('evidence_bank')
+          .update({
+            fetched_content: item.content,
+            fetch_status: 'fetched',
+            fetch_metadata: item.metadata || {},
+            fetched_at: new Date().toISOString(),
+            ...(item.title ? { title: item.title } : {}),
+          })
+          .eq('id', item.evidence_id)
+          .eq('workspace_id', workspace_id)
+
+        if (updateError) {
+          console.error(`Failed to update evidence_bank ${item.evidence_id}:`, updateError)
+          results.failed++
+          results.errors.push(`Failed to update ${item.evidence_id}: ${updateError.message}`)
+        } else {
+          results.updated++
+        }
       } else {
-        results.updated++
+        // Update evidence table (sticky note evidence)
+        // Note: evidence table may not have fetched_content columns, so we need to add them
+        // or store the content differently. For now, we update what we can.
+        const { error: updateError } = await supabase
+          .from('evidence')
+          .update({
+            fetched_content: item.content,
+            fetch_status: 'fetched',
+            fetched_at: new Date().toISOString(),
+            ...(item.title ? { title: item.title } : {}),
+          })
+          .eq('id', item.evidence_id)
+
+        if (updateError) {
+          console.error(`Failed to update evidence ${item.evidence_id}:`, updateError)
+          results.failed++
+          results.errors.push(`Failed to update ${item.evidence_id}: ${updateError.message}`)
+        } else {
+          results.updated++
+        }
       }
     }
 
@@ -135,12 +162,13 @@ export async function GET() {
       session_id: 'uuid (optional)',
       fetched_evidence: [
         {
-          evidence_id: 'uuid (required) - ID of the evidence_bank record to update',
+          evidence_id: 'uuid (required) - ID of the record to update',
           source_type: 'notion | slack | airtable | manual',
           url: 'Original URL',
           title: 'Fetched title (optional)',
           content: 'THE ACTUAL FETCHED CONTENT (required)',
-          metadata: 'object with additional info (optional)'
+          metadata: 'object with additional info (optional)',
+          table: 'evidence_bank | evidence (required) - which table the evidence_id is from'
         }
       ]
     },
