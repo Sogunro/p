@@ -110,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     // DEBUG: Return evidence info instead of running analysis (temporary)
     const debugMode = request.headers.get('x-debug-evidence') === 'true'
+    const debugPromptMode = request.headers.get('x-debug-prompt') === 'true'
     if (debugMode) {
       const evidenceDebug = (allEvidenceData || []).map(e => ({
         id: e.id,
@@ -380,6 +381,31 @@ Provide your analysis in the following JSON format:
 }
 
 Only return valid JSON, no other text.`
+
+    // DEBUG: Return the prompt without running analysis
+    if (debugPromptMode) {
+      // Count evidence in the prompt
+      const evidenceInPrompt = stickyNotes.reduce((count: number, note: { directEvidence: { fetch_status: string | null; fetched_content: string | null }[]; linkedEvidence: { fetch_status: string | null; fetched_content: string | null }[] }) => {
+        const directFetched = note.directEvidence.filter(e => e.fetch_status === 'fetched' && e.fetched_content).length
+        const linkedFetched = note.linkedEvidence.filter(e => e.fetch_status === 'fetched' && e.fetched_content).length
+        return count + directFetched + linkedFetched
+      }, 0)
+
+      return NextResponse.json({
+        debug: true,
+        debugType: 'prompt',
+        sessionId,
+        promptLength: prompt.length,
+        promptPreview: prompt.substring(0, 500) + '...',
+        promptMiddle: prompt.substring(Math.floor(prompt.length / 2) - 500, Math.floor(prompt.length / 2) + 500),
+        evidenceWithFetchedContentInPrompt: evidenceInPrompt,
+        stickyNotesWithEvidence: stickyNotes.filter((n: { directEvidence: unknown[]; linkedEvidence: unknown[] }) => n.directEvidence.length > 0 || n.linkedEvidence.length > 0).length,
+        totalStickyNotes: stickyNotes.length,
+        // Show the part of prompt that should contain evidence
+        evidenceSection: prompt.includes('FETCHED CONTENT:') ? 'Found FETCHED CONTENT sections' : 'NO FETCHED CONTENT sections found',
+        message: 'Debug mode - showing prompt without running analysis'
+      })
+    }
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
