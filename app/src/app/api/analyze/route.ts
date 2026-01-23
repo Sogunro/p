@@ -676,7 +676,34 @@ IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when a
       .update({ status: 'completed' })
       .eq('id', sessionId)
 
-    return NextResponse.json({ success: true, analysisId: savedAnalysis.id })
+    // Return full analysis data for immediate use in modal
+    const responseData = {
+      id: savedAnalysis.id,
+      session_id: sessionId,
+      created_at: savedAnalysis.created_at,
+      objective_score: analysis.objective_score || 0,
+      summary: analysis.summary || '',
+      session_diagnosis: analysis.session_diagnosis || null,
+      strategic_alignment: analysis.strategic_alignment || null,
+      solutions_analysis: analysis.solutions_analysis || [],
+      next_steps: analysis.next_steps || null,
+      evidence_backed: mappedEvidenceBacked || [],
+      assumptions: mappedAssumptions || [],
+      validation_recommendations: analysis.validation_recommendations || [],
+      constraint_analysis: analysis.constraint_analysis || [],
+      checklist_review: analysis.checklist_review || [],
+      evidence_assessment: analysis.evidence_assessment || null,
+      pattern_detection: analysis.pattern_detection || null,
+      priority_ranking: analysis.priority_ranking || null,
+      hypotheses: analysis.hypotheses || [],
+      sessionTitle: session.title
+    }
+
+    return NextResponse.json({
+      success: true,
+      analysisId: savedAnalysis.id,
+      analysis: responseData
+    })
   } catch (error) {
     console.error('Analysis error:', error)
     return NextResponse.json(

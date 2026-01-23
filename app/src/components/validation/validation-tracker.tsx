@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -79,7 +79,7 @@ export function ValidationTracker({ sessionId, analysisId, problems }: Props) {
     researchQuestions: [''],
     successCriteria: '',
     sampleSizeTarget: '',
-    priority: 'medium' as const
+    priority: 'medium' as 'high' | 'medium' | 'low'
   })
 
   // Form state for updating workflow
@@ -658,8 +658,8 @@ function WorkflowCard({
 }: {
   workflow: ValidationWorkflow
   onUpdate: () => void
-  getStatusBadge: (status: ValidationWorkflow['status']) => JSX.Element
-  getPriorityBadge: (priority: ValidationWorkflow['priority']) => JSX.Element
+  getStatusBadge: (status: ValidationWorkflow['status']) => React.ReactNode
+  getPriorityBadge: (priority: ValidationWorkflow['priority']) => React.ReactNode
   showResults?: boolean
 }) {
   return (
