@@ -249,18 +249,27 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const prompt = `You are a product discovery expert analyzing a discovery session. Analyze the following session data and provide a structured assessment.
+    // Extract vision, budget, timeline from constraints for strategic alignment
+    const visionConstraint = constraints.find((c: { label: string }) => c.label.toLowerCase().includes('vision'))
+    const budgetConstraint = constraints.find((c: { label: string }) => c.label.toLowerCase().includes('budget'))
+    const timelineConstraint = constraints.find((c: { label: string }) => c.label.toLowerCase().includes('timeline'))
 
-SESSION OBJECTIVES:
-${objectives.map((o: string, i: number) => `${i + 1}. ${o}`).join('\n')}
+    const prompt = `You are an expert product discovery analyst. Analyze the session data below and provide a COMPREHENSIVE analysis following ALL 10 capabilities from the Product Discovery Framework.
 
-CONSTRAINTS:
+=== SESSION CONTEXT ===
+Title: ${session.title}
+Objectives: ${objectives.join(', ')}
+
+=== CONSTRAINTS ===
 ${constraints.map((c: { label: string; value: string | null }) => `- ${c.label}: ${c.value || 'Not specified'}`).join('\n')}
+Product Vision: ${visionConstraint?.value || 'Not specified'}
+Budget: ${budgetConstraint?.value || 'Not specified'}
+Timeline: ${timelineConstraint?.value || 'Not specified'}
 
-CHECKLIST STATUS:
-${checklistItems.map((c: { item: string; checked: boolean }) => `- [${c.checked ? 'x' : ' '}] ${c.item}`).join('\n')}
+=== CHECKLIST STATUS ===
+${checklistItems.map((c: { item: string; checked: boolean }) => `[${c.checked ? 'x' : ' '}] ${c.item}`).join('\n')}
 
-STICKY NOTES BY SECTION:
+=== STICKY NOTES (CARDS) ===
 ${stickyNotes.map((note: {
   section: string
   content: string
@@ -274,83 +283,81 @@ ${stickyNotes.map((note: {
   const totalFetchedCount = directFetchedCount + linkedFetchedCount
 
   return `
-[${note.section}] ${note.hasEvidence ? '🟢 EVIDENCE-BACKED' : '🟡 ASSUMPTION'}
-Content: ${note.content}
-${totalEvidence > 0 ? `
-EVIDENCE ATTACHED (${totalEvidence} sources${totalFetchedCount > 0 ? `, ${totalFetchedCount} with fetched content` : ''}):
+[SECTION: ${note.section}]
+${note.hasEvidence ? '🟢 EVIDENCE-BACKED' : '🟡 ASSUMPTION'}
+CONTENT: "${note.content}"
+EVIDENCE COUNT: ${totalEvidence} sources${totalFetchedCount > 0 ? `, ${totalFetchedCount} with fetched content` : ''}
+${note.directEvidence.length > 0 ? `
+EVIDENCE DETAILS:
 ${note.directEvidence.map((e, i) => `
   ${i + 1}. "${e.title || 'Untitled'}" (${e.type}, Strength: ${e.strength.toUpperCase()})
-     ${e.fetch_status === 'fetched' && e.fetched_content ? `
-     FETCHED CONTENT:
-     ---
-     ${e.fetched_content.substring(0, 2000)}${e.fetched_content.length > 2000 ? '...[truncated]' : ''}
-     ---
-     ` : e.type === 'url' ? `URL: ${e.url}${e.fetch_status !== 'fetched' ? ' (NOT FETCHED)' : ''}` : `Content: ${e.content?.substring(0, 200)}...`}
-`).join('')}
+  ${e.fetch_status === 'fetched' && e.fetched_content ? `
+  FETCHED CONTENT:
+  ---
+  ${e.fetched_content.substring(0, 3000)}${e.fetched_content.length > 3000 ? '...[truncated]' : ''}
+  ---` : e.type === 'url' ? `URL: ${e.url}` : `Content: ${e.content?.substring(0, 300)}...`}
+`).join('')}` : ''}
+${note.linkedEvidence.length > 0 ? `
+LINKED EVIDENCE:
 ${note.linkedEvidence.map((e, i) => `
-  ${note.directEvidence.length + i + 1}. "${e.title}" (${e.source_system}, Strength: ${e.strength.toUpperCase()})
-     ${e.fetch_status === 'fetched' && e.fetched_content ? `
-     FETCHED CONTENT:
-     ---
-     ${e.fetched_content.substring(0, 2000)}${e.fetched_content.length > 2000 ? '...[truncated]' : ''}
-     ---
-     ` : e.url ? `URL: ${e.url} (NOT FETCHED)` : `Content: ${e.original_content?.substring(0, 200)}...`}
-`).join('')}
-` : ''}
+  ${i + 1}. "${e.title}" (${e.source_system}, Strength: ${e.strength.toUpperCase()})
+  ${e.fetch_status === 'fetched' && e.fetched_content ? `
+  FETCHED CONTENT:
+  ---
+  ${e.fetched_content.substring(0, 3000)}${e.fetched_content.length > 3000 ? '...[truncated]' : ''}
+  ---` : e.url ? `URL: ${e.url}` : `Content: ${e.original_content?.substring(0, 300)}...`}
+`).join('')}` : ''}
 `
-}).join('\n')}
+}).join('\n---\n')}
 
-LINKED NOTES (Related Concepts):
+=== LINKED NOTES (Related Concepts) ===
 ${linkedNotes.length > 0 ? linkedNotes.map((link: { from: { content: string; section: string }; to: { content: string; section: string } }) => `- [${link.from.section}] "${link.from.content}" ↔ [${link.to.section}] "${link.to.content}"`).join('\n') : 'No linked notes'}
 
-=== MANDATORY CLASSIFICATION RULES (YOU MUST FOLLOW THESE EXACTLY) ===
+=== ANALYSIS INSTRUCTIONS ===
 
-RULE 1 - EVIDENCE STATUS DETERMINES CATEGORY:
+You MUST perform ALL 10 analysis capabilities from the Product Discovery Framework:
+
+**CLASSIFICATION RULES (MANDATORY):**
 - 🟢 EVIDENCE-BACKED items → MUST go in "problems_strongly_validated" OR "problems_with_preliminary_evidence"
 - 🟡 ASSUMPTION items → MUST go in "problems_assumed"
-- This is NON-NEGOTIABLE. The evidence attachment status is the PRIMARY classification factor.
+- NEVER put items with evidence in the assumed category
 
-RULE 2 - NEVER PUT EVIDENCE-BACKED ITEMS IN ASSUMPTIONS:
-- If an item has "EVIDENCE ATTACHED" section below it, it CANNOT be in "problems_assumed"
-- Even if the evidence seems weak or tangential, it still goes in validated or preliminary
-- Items with fetched content = at minimum "problems_with_preliminary_evidence" (confidence 0.3+)
+**CONFIDENCE SCORING:**
+- 3+ evidence sources OR quantitative data → "problems_strongly_validated" (confidence 0.6-0.95)
+- 1-2 evidence sources → "problems_with_preliminary_evidence" (confidence 0.3-0.6)
+- No evidence → "problems_assumed" (confidence 0.1-0.3)
 
-RULE 3 - CONFIDENCE SCORING WITHIN VALIDATED CATEGORIES:
-- 🟢 with 3+ sources OR quantitative data = "problems_strongly_validated" (confidence 0.6-0.95)
-- 🟢 with 1-2 sources OR qualitative only = "problems_with_preliminary_evidence" (confidence 0.3-0.6)
-- 🟡 with no evidence = "problems_assumed" (confidence 0.1-0.3)
+**EVIDENCE QUALITY ASSESSMENT:**
+Strong Evidence (High Confidence): Multiple independent sources (3+), mix of types (interviews + analytics + support), numbers/data, behavioral evidence
+Weak Evidence (Low Confidence): Single source, opinions only, no data, vague statements
+No Evidence (Assumption): Nothing attached, just an idea
 
-RULE 4 - USE THE FETCHED CONTENT:
-When analyzing fetched content, extract and summarize:
-- Specific user quotes
-- Numbers and metrics mentioned
-- User behaviors described
-- Pain points expressed
+Return a JSON object with ALL of these sections:
 
-=== ANALYSIS PROCESS ===
-STEP 1: Count all 🟢 EVIDENCE-BACKED items → These MUST appear in validated/preliminary categories
-STEP 2: Count all 🟡 ASSUMPTION items → These go in problems_assumed
-STEP 3: For each 🟢 item, determine if strongly validated (0.6+) or preliminary (0.3-0.6) based on evidence quality
-STEP 4: Generate validation recommendations for preliminary and assumed items
-STEP 5: Evaluate checklist and constraints
-
-Provide your analysis in the following JSON format:
 {
-  "objective_score": <0-100 score on how well objectives were addressed>,
-  "summary": "<2-3 sentence overall summary>",
-  "session_diagnosis": {
-    "overall_quality": "<excellent/good/fair/poor>",
-    "evidence_maturity": "<strong/medium/weak>",
-    "key_strengths": ["<strength 1>", "<strength 2>"],
-    "key_gaps": ["<gap 1>", "<gap 2>"]
+  "objective_score": <0-100>,
+  "summary": "<2-3 sentence overview>",
+
+  "evidence_assessment": {
+    "total_sources": <number>,
+    "source_types": ["interview", "analytics", "support_ticket", "user_feedback"],
+    "quality_breakdown": {
+      "strong": <count with 3+ sources or quantitative data>,
+      "weak": <count with 1-2 sources>,
+      "none": <count with no evidence>
+    },
+    "evidence_quality_score": <0-100>
   },
+
   "problems_strongly_validated": [
     {
       "content": "<problem>",
       "section": "<section>",
-      "confidence": <0.6-1.0>,
-      "evidence_summary": "<what evidence supports this>",
-      "sources_count": <number>
+      "confidence": <0.6-0.95>,
+      "evidence_summary": "<summary of supporting evidence>",
+      "sources_count": <number>,
+      "key_quotes": ["<quote from evidence>"],
+      "user_impact": "<high/medium/low>"
     }
   ],
   "problems_with_preliminary_evidence": [
@@ -359,7 +366,8 @@ Provide your analysis in the following JSON format:
       "section": "<section>",
       "confidence": <0.3-0.6>,
       "current_evidence": "<what we have>",
-      "validation_needed": "<what's missing>"
+      "validation_needed": "<what's missing>",
+      "suggested_research": "<specific research recommendation>"
     }
   ],
   "problems_assumed": [
@@ -368,29 +376,165 @@ Provide your analysis in the following JSON format:
       "section": "<section>",
       "confidence": <0.1-0.3>,
       "validation_strategy": "<how to validate>",
-      "research_questions": ["<question 1>", "<question 2>"]
+      "research_questions": ["<question 1>", "<question 2>"],
+      "risk_if_wrong": "<consequence of invalid assumption>"
     }
   ],
+
+  "strategic_alignment": {
+    "vision_alignment_score": <0-100>,
+    "vision_alignment_explanation": "<how problems align with vision>",
+    "goals_coverage": [
+      {
+        "goal": "<strategic goal from constraints>",
+        "impact": "<high/medium/low/none>",
+        "problems_addressed": ["<problem content>"]
+      }
+    ],
+    "kpi_impact": [
+      {
+        "kpi": "<KPI name>",
+        "estimated_impact": "<e.g., 'NPS -12 points', 'Churn +8%'>",
+        "confidence": "<high/medium/low>"
+      }
+    ],
+    "overall_alignment_score": <0-100>
+  },
+
+  "solutions_analysis": [
+    {
+      "solution": "<solution content>",
+      "problem_solved": "<which problem this addresses>",
+      "recommendation": "<BUILD_NOW | VALIDATE_FIRST | DEFER | BLOCKED>",
+      "budget_fit": "<within_budget | exceeds_by_X | tight>",
+      "timeline_fit": "<fits | needs_X_extra_weeks>",
+      "tech_feasibility": "<uses_existing | requires_new_capability>",
+      "guardrails_check": "<compliant | violates_X>",
+      "reasoning": "<why this recommendation>"
+    }
+  ],
+
+  "checklist_review": [
+    {
+      "item": "<checklist item>",
+      "status": "<met | partially | not_met | cannot_auto_check>",
+      "auto_checked": true,
+      "notes": "<explanation of status>"
+    }
+  ],
+
+  "pattern_detection": {
+    "shared_evidence": [
+      {
+        "evidence_title": "<evidence that supports multiple problems>",
+        "used_by_problems": ["<problem 1>", "<problem 2>"]
+      }
+    ],
+    "convergent_patterns": [
+      {
+        "pattern": "<what multiple sources are pointing to>",
+        "source_count": <number>,
+        "sources": ["<source types>"],
+        "confidence_boost": "<increases confidence because...>"
+      }
+    ],
+    "contradictions": [
+      {
+        "issue": "<where sources contradict>",
+        "sources_conflicting": ["<source 1>", "<source 2>"],
+        "resolution_needed": "<how to resolve>"
+      }
+    ],
+    "evidence_gaps": ["<type of evidence missing>"]
+  },
+
+  "priority_ranking": [
+    {
+      "rank": 1,
+      "item": "<problem or solution>",
+      "type": "<problem | solution>",
+      "total_score": <0-100>,
+      "score_breakdown": {
+        "evidence_strength": <0-25>,
+        "user_impact": <0-25>,
+        "strategic_alignment": <0-25>,
+        "frequency_mentioned": <0-25>
+      },
+      "why_this_rank": "<transparent explanation>"
+    }
+  ],
+
+  "next_steps": {
+    "build_now": [
+      {
+        "action": "<what to build>",
+        "reason": "<why high confidence>",
+        "which_solutions": ["<solution content>"]
+      }
+    ],
+    "validate_first": [
+      {
+        "action": "<what to validate>",
+        "method": "<specific method: survey, interview, analytics>",
+        "sample_size": "<recommended sample>",
+        "questions": ["<specific questions to answer>"],
+        "timeline": "<estimated time to validate>"
+      }
+    ],
+    "defer": [
+      {
+        "item": "<what to defer>",
+        "reason": "<why defer: budget, timeline, off-strategy>",
+        "revisit_when": "<condition to revisit>"
+      }
+    ]
+  },
+
+  "conflicts": [
+    {
+      "type": "<budget_exceeded | timeline_exceeded | off_strategy | evidence_weak | guardrail_violation>",
+      "item": "<what's in conflict>",
+      "details": "<specific numbers or explanation>",
+      "suggestion": "<alternative approach or action>"
+    }
+  ],
+
+  "hypotheses": [
+    {
+      "for_problem": "<problem content>",
+      "hypothesis": {
+        "if": "<IF we do this>",
+        "then": "<THEN this outcome>",
+        "because": "<BECAUSE evidence suggests>"
+      },
+      "research_questions": ["<specific question 1>", "<specific question 2>"],
+      "success_criteria": "<what would prove this hypothesis>",
+      "sample_size_recommendation": "<how many users/data points needed>"
+    }
+  ],
+
   "validation_recommendations": [
     {
       "item": "<item needing validation>",
-      "confidence": "<low/medium/high>",
+      "confidence": "<low | medium | high>",
       "reason": "<why it needs validation>",
-      "method": "<suggested validation method>",
+      "method": "<survey | interview | analytics | prototype_test | A_B_test>",
       "questions": ["<question 1>", "<question 2>"],
-      "success_criteria": "<what would prove this>",
-      "sample_size": "<recommended sample size>"
+      "success_criteria": "<what would validate this>",
+      "sample_size": "<recommended sample>"
     }
   ],
+
   "constraint_analysis": [
-    {"constraint": "<constraint name>", "status": "<aligned/warning/conflict>", "notes": "<explanation>"}
-  ],
-  "checklist_review": [
-    {"item": "<checklist item>", "status": "<met/partially/not_met>", "notes": "<explanation>"}
+    {
+      "constraint": "<constraint name>",
+      "status": "<aligned | warning | conflict>",
+      "notes": "<explanation>"
+    }
   ]
 }
 
-Only return valid JSON, no other text.`
+IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when analyzing evidence quality - extract quotes, numbers, and specific user behaviors.`
 
     // DEBUG: Return the prompt without running analysis
     if (debugPromptMode) {
@@ -444,31 +588,45 @@ Only return valid JSON, no other text.`
     // Map the new AI response format to database columns
     // The AI returns: problems_assumed, problems_strongly_validated, problems_with_preliminary_evidence
     // The database expects: assumptions, evidence_backed
-    const mappedAssumptions = [
-      // Tier 3: Pure assumptions (no evidence)
-      ...(analysis.problems_assumed || []).map((p: { content: string; section: string; validation_strategy?: string }) => ({
-        content: p.content,
-        section: p.section,
-        confidence_tier: 'assumed',
-        validation_strategy: p.validation_strategy,
-      })),
-      // Tier 2: Preliminary evidence (needs more validation)
-      ...(analysis.problems_with_preliminary_evidence || []).map((p: { content: string; section: string; current_evidence?: string; validation_needed?: string }) => ({
-        content: p.content,
-        section: p.section,
-        confidence_tier: 'preliminary',
-        current_evidence: p.current_evidence,
-        validation_needed: p.validation_needed,
-      })),
-    ]
+    //
+    // IMPORTANT: Items WITH evidence (🟢) go to evidence_backed
+    //            Items WITHOUT evidence (🟡) go to assumptions
+    //            This is the MANDATORY classification rule from the reference document.
 
-    const mappedEvidenceBacked = (analysis.problems_strongly_validated || []).map((p: { content: string; section: string; evidence_summary?: string; confidence?: number; sources_count?: number }) => ({
+    // Tier 3 ONLY: Pure assumptions (NO evidence attached)
+    const mappedAssumptions = (analysis.problems_assumed || []).map((p: { content: string; section: string; validation_strategy?: string; research_questions?: string[]; risk_if_wrong?: string }) => ({
       content: p.content,
       section: p.section,
-      evidence_summary: p.evidence_summary || '',
-      confidence: p.confidence,
-      sources_count: p.sources_count,
+      confidence_tier: 'assumed',
+      validation_strategy: p.validation_strategy,
+      research_questions: p.research_questions,
+      risk_if_wrong: p.risk_if_wrong,
     }))
+
+    // Tier 1 + Tier 2: ALL items with evidence attached
+    const mappedEvidenceBacked = [
+      // Tier 1: Strongly validated (3+ sources, confidence 0.6-0.95)
+      ...(analysis.problems_strongly_validated || []).map((p: { content: string; section: string; evidence_summary?: string; confidence?: number; sources_count?: number; key_quotes?: string[]; user_impact?: string }) => ({
+        content: p.content,
+        section: p.section,
+        evidence_summary: p.evidence_summary || '',
+        confidence: p.confidence,
+        sources_count: p.sources_count,
+        confidence_tier: 'validated',
+        key_quotes: p.key_quotes,
+        user_impact: p.user_impact,
+      })),
+      // Tier 2: Preliminary evidence (1-2 sources, confidence 0.3-0.6) - MOVED HERE FROM ASSUMPTIONS
+      ...(analysis.problems_with_preliminary_evidence || []).map((p: { content: string; section: string; confidence?: number; current_evidence?: string; validation_needed?: string; suggested_research?: string }) => ({
+        content: p.content,
+        section: p.section,
+        evidence_summary: p.current_evidence || '',
+        confidence: p.confidence,
+        confidence_tier: 'preliminary',
+        validation_needed: p.validation_needed,
+        suggested_research: p.suggested_research,
+      })),
+    ]
 
     // Save analysis to database
     const { data: savedAnalysis, error: saveError } = await supabase
