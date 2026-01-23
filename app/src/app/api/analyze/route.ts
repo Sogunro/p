@@ -637,7 +637,7 @@ IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when a
       })),
     ]
 
-    // Save analysis to database
+    // Save analysis to database with all analysis fields
     const { data: savedAnalysis, error: saveError } = await supabase
       .from('session_analyses')
       .insert({
@@ -650,6 +650,16 @@ IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when a
         validation_recommendations: analysis.validation_recommendations,
         constraint_analysis: analysis.constraint_analysis,
         checklist_review: analysis.checklist_review,
+        // New comprehensive analysis fields (requires migration)
+        session_diagnosis: analysis.session_diagnosis || null,
+        evidence_assessment: analysis.evidence_assessment || null,
+        strategic_alignment: analysis.strategic_alignment || null,
+        solutions_analysis: analysis.solutions_analysis || null,
+        pattern_detection: analysis.pattern_detection || null,
+        priority_ranking: analysis.priority_ranking || null,
+        next_steps: analysis.next_steps || null,
+        hypotheses: analysis.hypotheses || null,
+        conflicts: analysis.conflicts || null,
         raw_response: message,
       })
       .select()
