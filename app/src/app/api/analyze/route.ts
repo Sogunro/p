@@ -108,6 +108,29 @@ export async function POST(request: NextRequest) {
       evidenceByNoteId.set(e.sticky_note_id, [...existing, e])
     })
 
+    // DEBUG: Return evidence info instead of running analysis (temporary)
+    const debugMode = request.headers.get('x-debug-evidence') === 'true'
+    if (debugMode) {
+      const evidenceDebug = (allEvidenceData || []).map(e => ({
+        id: e.id,
+        sticky_note_id: e.sticky_note_id,
+        type: e.type,
+        url: e.url?.substring(0, 50),
+        fetch_status: e.fetch_status,
+        has_fetched_content: !!e.fetched_content,
+        fetched_content_preview: e.fetched_content?.substring(0, 100),
+      }))
+
+      return NextResponse.json({
+        debug: true,
+        sessionId,
+        allNoteIds,
+        evidenceCount: allEvidenceData?.length || 0,
+        evidenceItems: evidenceDebug,
+        message: 'Debug mode - showing evidence data without running analysis'
+      })
+    }
+
     console.log('=== EVIDENCE FETCH DEBUG ===')
     console.log(`Total evidence items fetched: ${allEvidenceData?.length || 0}`)
     console.log(`Sticky notes with evidence: ${evidenceByNoteId.size}`)
