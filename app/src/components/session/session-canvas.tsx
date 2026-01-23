@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect, MouseEvent } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { StickyNote } from './sticky-note'
 import { SectionContainer } from './section-container'
 import { EvidencePopover } from './evidence-popover'
+import { AnalysisResultsModal, AnalysisData } from './analysis-results-modal'
 import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank } from '@/types/database'
 
 type SourceSystem = 'manual' | 'slack' | 'notion' | 'airtable'
@@ -42,9 +43,15 @@ interface SessionCanvasProps {
 
 export function SessionCanvas({ session: initialSession, stickyNoteLinks }: SessionCanvasProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
   const [session, setSession] = useState(initialSession)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  // Analysis modal state
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false)
+  const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
+  const [hasExistingAnalysis, setHasExistingAnalysis] = useState(false)
   const [showChecklist, setShowChecklist] = useState(false)
   const [showConstraints, setShowConstraints] = useState(false)
   const [activeEvidenceNote, setActiveEvidenceNote] = useState<string | null>(null)
@@ -113,6 +120,31 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       }
     }
   }, [handleCanvasMouseMove, handleCanvasMouseUp, handleWheel])
+
+  // Fetch existing analysis on mount and check URL params
+  useEffect(() => {
+    const checkExistingAnalysis = async () => {
+      try {
+        const response = await fetch(`/api/session/${session.id}/analysis`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.analysis) {
+            setAnalysisData(data.analysis)
+            setHasExistingAnalysis(true)
+            // Check if URL says to show the modal
+            if (searchParams.get('showAnalysis') === 'true') {
+              setShowAnalysisModal(true)
+              // Clean up URL
+              router.replace(`/session/${session.id}`, { scroll: false })
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch existing analysis:', error)
+      }
+    }
+    checkExistingAnalysis()
+  }, [session.id, searchParams, router])
 
   const handleAddSection = async () => {
     const maxX = session.sections.reduce((max, s) => Math.max(max, s.position_x), 0)
@@ -597,14 +629,100 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       })
 
       if (response.ok) {
-        router.push(`/session/${session.id}/analysis`)
+        const data = await response.json()
+        // Set analysis data and open modal instead of redirecting
+        if (data.analysis) {
+          setAnalysisData(data.analysis)
+          setHasExistingAnalysis(true)
+          setShowAnalysisModal(true)
+        } else {
+          // Fallback: fetch the analysis we just created
+          const fetchResponse = await fetch(`/api/session/${session.id}/analysis`)
+          if (fetchResponse.ok) {
+            const fetchData = await fetchResponse.json()
+            if (fetchData.analysis) {
+              setAnalysisData(fetchData.analysis)
+              setHasExistingAnalysis(true)
+              setShowAnalysisModal(true)
+            }
+          }
+        }
       } else {
         console.error('Analysis failed:', response.statusText)
-        setIsAnalyzing(false)
       }
     } catch (error) {
       console.error('Analysis failed:', error)
+    } finally {
       setIsAnalyzing(false)
+    }
+  }
+
+  const handleReanalyze = async () => {
+    setIsAnalyzing(true)
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session.id,
+          skipEvidenceCheck: true,
+          includeEvidence: true,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.analysis) {
+          setAnalysisData(data.analysis)
+        } else {
+          const fetchResponse = await fetch(`/api/session/${session.id}/analysis`)
+          if (fetchResponse.ok) {
+            const fetchData = await fetchResponse.json()
+            if (fetchData.analysis) {
+              setAnalysisData(fetchData.analysis)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Re-analysis failed:', error)
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleClearResults = async () => {
+    try {
+      const response = await fetch(`/api/session/${session.id}/analysis`, {
+        method: 'DELETE',
+      })
+      if (response.ok) {
+        setAnalysisData(null)
+        setHasExistingAnalysis(false)
+        setShowAnalysisModal(false)
+      }
+    } catch (error) {
+      console.error('Failed to clear results:', error)
+    }
+  }
+
+  const handleViewAnalysis = async () => {
+    if (analysisData) {
+      setShowAnalysisModal(true)
+    } else {
+      // Fetch if not already loaded
+      try {
+        const response = await fetch(`/api/session/${session.id}/analysis`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.analysis) {
+            setAnalysisData(data.analysis)
+            setShowAnalysisModal(true)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch analysis:', error)
+      }
     }
   }
 
@@ -618,7 +736,22 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       })
 
       if (response.ok) {
-        router.push(`/session/${session.id}/analysis`)
+        const data = await response.json()
+        if (data.analysis) {
+          setAnalysisData(data.analysis)
+          setHasExistingAnalysis(true)
+          setShowAnalysisModal(true)
+        } else {
+          const fetchResponse = await fetch(`/api/session/${session.id}/analysis`)
+          if (fetchResponse.ok) {
+            const fetchData = await fetchResponse.json()
+            if (fetchData.analysis) {
+              setAnalysisData(fetchData.analysis)
+              setHasExistingAnalysis(true)
+              setShowAnalysisModal(true)
+            }
+          }
+        }
       } else if (response.status === 428) {
         // Evidence stale warning
         const data = await response.json()
@@ -755,6 +888,18 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
                   Fetch Evidence
                 </>
               )}
+            </Button>
+          )}
+          {hasExistingAnalysis && (
+            <Button
+              variant="outline"
+              onClick={handleViewAnalysis}
+              className="flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              View Analysis
             </Button>
           )}
           <Button onClick={handleOpenAnalyzeDialog} disabled={isAnalyzing}>
@@ -1214,6 +1359,17 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Analysis Results Modal */}
+      <AnalysisResultsModal
+        isOpen={showAnalysisModal}
+        onClose={() => setShowAnalysisModal(false)}
+        analysisData={analysisData}
+        sessionTitle={session.title}
+        onReanalyze={handleReanalyze}
+        onClearResults={handleClearResults}
+        isReanalyzing={isAnalyzing}
+      />
     </div>
   )
 }

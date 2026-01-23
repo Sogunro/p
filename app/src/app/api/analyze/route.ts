@@ -338,6 +338,15 @@ Return a JSON object with ALL of these sections:
   "objective_score": <0-100>,
   "summary": "<2-3 sentence overview>",
 
+  "session_diagnosis": {
+    "overall_quality": "<good | fair | poor>",
+    "evidence_maturity": "<high | medium | low>",
+    "session_nature": "<validated | hybrid | assumption-heavy>",
+    "key_strengths": ["<strength 1>", "<strength 2>"],
+    "key_gaps": ["<gap 1>", "<gap 2>"],
+    "readiness_to_build": "<ready | needs_validation | not_ready>"
+  },
+
   "evidence_assessment": {
     "total_sources": <number>,
     "source_types": ["interview", "analytics", "support_ticket", "user_feedback"],
@@ -628,7 +637,7 @@ IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when a
       })),
     ]
 
-    // Save analysis to database
+    // Save analysis to database with all analysis fields
     const { data: savedAnalysis, error: saveError } = await supabase
       .from('session_analyses')
       .insert({
@@ -641,6 +650,16 @@ IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when a
         validation_recommendations: analysis.validation_recommendations,
         constraint_analysis: analysis.constraint_analysis,
         checklist_review: analysis.checklist_review,
+        // New comprehensive analysis fields (requires migration)
+        session_diagnosis: analysis.session_diagnosis || null,
+        evidence_assessment: analysis.evidence_assessment || null,
+        strategic_alignment: analysis.strategic_alignment || null,
+        solutions_analysis: analysis.solutions_analysis || null,
+        pattern_detection: analysis.pattern_detection || null,
+        priority_ranking: analysis.priority_ranking || null,
+        next_steps: analysis.next_steps || null,
+        hypotheses: analysis.hypotheses || null,
+        conflicts: analysis.conflicts || null,
         raw_response: message,
       })
       .select()
@@ -657,7 +676,34 @@ IMPORTANT: Only return valid JSON, no other text. Use the FETCHED CONTENT when a
       .update({ status: 'completed' })
       .eq('id', sessionId)
 
-    return NextResponse.json({ success: true, analysisId: savedAnalysis.id })
+    // Return full analysis data for immediate use in modal
+    const responseData = {
+      id: savedAnalysis.id,
+      session_id: sessionId,
+      created_at: savedAnalysis.created_at,
+      objective_score: analysis.objective_score || 0,
+      summary: analysis.summary || '',
+      session_diagnosis: analysis.session_diagnosis || null,
+      strategic_alignment: analysis.strategic_alignment || null,
+      solutions_analysis: analysis.solutions_analysis || [],
+      next_steps: analysis.next_steps || null,
+      evidence_backed: mappedEvidenceBacked || [],
+      assumptions: mappedAssumptions || [],
+      validation_recommendations: analysis.validation_recommendations || [],
+      constraint_analysis: analysis.constraint_analysis || [],
+      checklist_review: analysis.checklist_review || [],
+      evidence_assessment: analysis.evidence_assessment || null,
+      pattern_detection: analysis.pattern_detection || null,
+      priority_ranking: analysis.priority_ranking || null,
+      hypotheses: analysis.hypotheses || [],
+      sessionTitle: session.title
+    }
+
+    return NextResponse.json({
+      success: true,
+      analysisId: savedAnalysis.id,
+      analysis: responseData
+    })
   } catch (error) {
     console.error('Analysis error:', error)
     return NextResponse.json(

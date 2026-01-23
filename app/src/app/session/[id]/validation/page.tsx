@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ValidationTracker } from '@/components/validation/validation-tracker'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -441,6 +442,32 @@ export default async function ValidationPortalPage({ params }: PageProps) {
             </CardContent>
           </Card>
         )}
+
+        {/* Hypothesis Tracker */}
+        <ValidationTracker
+          sessionId={id}
+          analysisId={analysis.id}
+          problems={[
+            ...tier1Problems.map(p => ({
+              content: p.content,
+              section: p.section,
+              confidence: p.confidence,
+              type: 'tier1' as const
+            })),
+            ...tier2Problems.map(p => ({
+              content: p.content,
+              section: p.section,
+              confidence: p.confidence,
+              type: 'tier2' as const
+            })),
+            ...tier3Problems.map(p => ({
+              content: p.content,
+              section: p.section,
+              confidence: p.confidence,
+              type: 'tier3' as const
+            }))
+          ]}
+        />
 
         {/* Evidence Quality Guide */}
         <Card>
