@@ -84,6 +84,38 @@ export async function POST(request: NextRequest) {
       s.sticky_notes.map((n: { id: string }) => n.id)
     )
 
+    // Fetch evidence separately to ensure we get fetched_content columns
+    // This is more reliable than nested query which may not return new columns
+    const { data: allEvidenceData } = await supabase
+      .from('evidence')
+      .select('id, sticky_note_id, type, url, content, title, strength, fetched_content, fetch_status, fetched_at')
+      .in('sticky_note_id', allNoteIds)
+
+    // Create a map of sticky_note_id to evidence items
+    const evidenceByNoteId = new Map<string, Array<{
+      id: string
+      type: string
+      url: string | null
+      content: string | null
+      title: string | null
+      strength: string | null
+      fetched_content: string | null
+      fetch_status: string | null
+    }>>()
+
+    ;(allEvidenceData || []).forEach((e) => {
+      const existing = evidenceByNoteId.get(e.sticky_note_id) || []
+      evidenceByNoteId.set(e.sticky_note_id, [...existing, e])
+    })
+
+    console.log('=== EVIDENCE FETCH DEBUG ===')
+    console.log(`Total evidence items fetched: ${allEvidenceData?.length || 0}`)
+    console.log(`Sticky notes with evidence: ${evidenceByNoteId.size}`)
+    ;(allEvidenceData || []).forEach((e, i) => {
+      console.log(`  ${i + 1}. note_id: ${e.sticky_note_id}, fetch_status: ${e.fetch_status}, has_content: ${!!e.fetched_content}`)
+    })
+    console.log('=== END EVIDENCE FETCH DEBUG ===')
+
     const { data: noteLinks } = await supabase
       .from('sticky_note_links')
       .select('*')
@@ -143,35 +175,20 @@ export async function POST(request: NextRequest) {
       value: sc.constraints.value,
     }))
 
-    // Debug: Log evidence data to verify fetched_content is being retrieved
-    console.log('=== ANALYZE DEBUG: Evidence Data ===')
-    session.sections.forEach((section: { name: string; sticky_notes: { id: string; content: string; evidence: { fetched_content: string | null; fetch_status: string | null; url: string | null }[] }[] }) => {
-      section.sticky_notes.forEach((note: { id: string; content: string; evidence: { fetched_content: string | null; fetch_status: string | null; url: string | null }[] }) => {
-        if (note.evidence && note.evidence.length > 0) {
-          console.log(`Note "${note.content.substring(0, 50)}..." has ${note.evidence.length} evidence items:`)
-          note.evidence.forEach((e: { fetched_content: string | null; fetch_status: string | null; url: string | null }, i: number) => {
-            console.log(`  ${i + 1}. fetch_status: ${e.fetch_status}, has_fetched_content: ${!!e.fetched_content}, url: ${e.url?.substring(0, 50)}`)
-            if (e.fetched_content) {
-              console.log(`     fetched_content preview: ${e.fetched_content.substring(0, 100)}...`)
-            }
-          })
-        }
-      })
-    })
-    console.log('=== END ANALYZE DEBUG ===')
-
-    const stickyNotes = session.sections.flatMap((section: { name: string; sticky_notes: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }[] }[] }) =>
-      section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }[] }) => {
+    const stickyNotes = session.sections.flatMap((section: { name: string; sticky_notes: { id: string; content: string; has_evidence: boolean }[] }) =>
+      section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean }) => {
         // Get linked evidence from evidence_bank (with fetched content)
         const linkedEvidence = linkedEvidenceMap.get(note.id) || []
+        // Get direct evidence from separate query (ensures fetched_content is included)
+        const directEvidenceItems = evidenceByNoteId.get(note.id) || []
 
         return {
           id: note.id,
           section: section.name,
           content: note.content,
-          hasEvidence: note.has_evidence || linkedEvidence.length > 0,
-          // Direct evidence attached to sticky note (now includes fetched_content from Phase 5)
-          directEvidence: note.evidence.map((e: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }) => ({
+          hasEvidence: note.has_evidence || linkedEvidence.length > 0 || directEvidenceItems.length > 0,
+          // Direct evidence from separate query (ensures fetched_content columns are included)
+          directEvidence: directEvidenceItems.map((e) => ({
             type: e.type,
             url: e.url,
             content: e.content,
