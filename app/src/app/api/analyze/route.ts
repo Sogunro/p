@@ -338,6 +338,15 @@ Return a JSON object with ALL of these sections:
   "objective_score": <0-100>,
   "summary": "<2-3 sentence overview>",
 
+  "session_diagnosis": {
+    "overall_quality": "<good | fair | poor>",
+    "evidence_maturity": "<high | medium | low>",
+    "session_nature": "<validated | hybrid | assumption-heavy>",
+    "key_strengths": ["<strength 1>", "<strength 2>"],
+    "key_gaps": ["<gap 1>", "<gap 2>"],
+    "readiness_to_build": "<ready | needs_validation | not_ready>"
+  },
+
   "evidence_assessment": {
     "total_sources": <number>,
     "source_types": ["interview", "analytics", "support_ticket", "user_feedback"],
