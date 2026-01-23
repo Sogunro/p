@@ -431,6 +431,35 @@ Only return valid JSON, no other text.`
       }
     }
 
+    // Map the new AI response format to database columns
+    // The AI returns: problems_assumed, problems_strongly_validated, problems_with_preliminary_evidence
+    // The database expects: assumptions, evidence_backed
+    const mappedAssumptions = [
+      // Tier 3: Pure assumptions (no evidence)
+      ...(analysis.problems_assumed || []).map((p: { content: string; section: string; validation_strategy?: string }) => ({
+        content: p.content,
+        section: p.section,
+        confidence_tier: 'assumed',
+        validation_strategy: p.validation_strategy,
+      })),
+      // Tier 2: Preliminary evidence (needs more validation)
+      ...(analysis.problems_with_preliminary_evidence || []).map((p: { content: string; section: string; current_evidence?: string; validation_needed?: string }) => ({
+        content: p.content,
+        section: p.section,
+        confidence_tier: 'preliminary',
+        current_evidence: p.current_evidence,
+        validation_needed: p.validation_needed,
+      })),
+    ]
+
+    const mappedEvidenceBacked = (analysis.problems_strongly_validated || []).map((p: { content: string; section: string; evidence_summary?: string; confidence?: number; sources_count?: number }) => ({
+      content: p.content,
+      section: p.section,
+      evidence_summary: p.evidence_summary || '',
+      confidence: p.confidence,
+      sources_count: p.sources_count,
+    }))
+
     // Save analysis to database
     const { data: savedAnalysis, error: saveError } = await supabase
       .from('session_analyses')
@@ -438,12 +467,15 @@ Only return valid JSON, no other text.`
         session_id: sessionId,
         objective_score: analysis.objective_score,
         summary: analysis.summary,
-        assumptions: analysis.assumptions,
-        evidence_backed: analysis.evidence_backed,
+        // Map new AI response format to database columns
+        assumptions: mappedAssumptions,
+        evidence_backed: mappedEvidenceBacked,
         validation_recommendations: analysis.validation_recommendations,
         constraint_analysis: analysis.constraint_analysis,
         checklist_review: analysis.checklist_review,
         raw_response: message,
+        // Also store the session_diagnosis if available
+        session_diagnosis: analysis.session_diagnosis,
       })
       .select()
       .single()
