@@ -303,34 +303,36 @@ ${note.linkedEvidence.map((e, i) => `
 LINKED NOTES (Related Concepts):
 ${linkedNotes.length > 0 ? linkedNotes.map((link: { from: { content: string; section: string }; to: { content: string; section: string } }) => `- [${link.from.section}] "${link.from.content}" ↔ [${link.to.section}] "${link.to.content}"`).join('\n') : 'No linked notes'}
 
-EVIDENCE QUALITY FRAMEWORK:
-- HIGH QUALITY (0.7-0.95 confidence): 3+ independent sources, quantitative data, behavioral evidence
-- MEDIUM QUALITY (0.4-0.6): 1-2 sources, some quantification or specific examples
-- LOW QUALITY (0.2-0.4): Single anecdotal source, no quantification
-- NO EVIDENCE (0.1-0.3): Pure assumption, no evidence attached
+=== MANDATORY CLASSIFICATION RULES (YOU MUST FOLLOW THESE EXACTLY) ===
 
-CRITICAL CLASSIFICATION RULES:
-1. ANY sticky note marked with 🟢 EVIDENCE-BACKED that has FETCHED CONTENT should be in "problems_strongly_validated" OR "problems_with_preliminary_evidence"
-2. Items with fetched content containing specific quotes, user feedback, or data = "problems_strongly_validated" (confidence 0.6+)
-3. Items with fetched content but less specific = "problems_with_preliminary_evidence" (confidence 0.3-0.6)
-4. ONLY items with NO evidence attached (🟡 ASSUMPTION) go in "problems_assumed"
-5. Do NOT put evidence-backed items in "problems_assumed" - if they have fetched content, they are validated to some degree
+RULE 1 - EVIDENCE STATUS DETERMINES CATEGORY:
+- 🟢 EVIDENCE-BACKED items → MUST go in "problems_strongly_validated" OR "problems_with_preliminary_evidence"
+- 🟡 ASSUMPTION items → MUST go in "problems_assumed"
+- This is NON-NEGOTIABLE. The evidence attachment status is the PRIMARY classification factor.
 
-IMPORTANT: When fetched content is available, analyze the ACTUAL CONTENT to assess evidence quality. Look for:
-- Specific quotes and examples
-- Numbers and metrics
-- Multiple people reporting similar issues
-- Behavioral data vs opinions
+RULE 2 - NEVER PUT EVIDENCE-BACKED ITEMS IN ASSUMPTIONS:
+- If an item has "EVIDENCE ATTACHED" section below it, it CANNOT be in "problems_assumed"
+- Even if the evidence seems weak or tangential, it still goes in validated or preliminary
+- Items with fetched content = at minimum "problems_with_preliminary_evidence" (confidence 0.3+)
 
-ANALYSIS INSTRUCTIONS:
-1. First, identify all items marked 🟢 EVIDENCE-BACKED - these MUST go in validated or preliminary categories
-2. Assess evidence quality for each card using the framework above
-2. Classify problems into 3 tiers by evidence strength:
-   - TIER 1 (Strongly Validated): Confidence 0.6-1.0, multiple independent sources
-   - TIER 2 (Preliminary Evidence): Confidence 0.3-0.6, 1-2 sources, needs validation
-   - TIER 3 (Assumptions): Confidence 0-0.3, no evidence, validate first
-3. Score strategic alignment against constraints
-4. For items needing validation, provide specific validation strategies
+RULE 3 - CONFIDENCE SCORING WITHIN VALIDATED CATEGORIES:
+- 🟢 with 3+ sources OR quantitative data = "problems_strongly_validated" (confidence 0.6-0.95)
+- 🟢 with 1-2 sources OR qualitative only = "problems_with_preliminary_evidence" (confidence 0.3-0.6)
+- 🟡 with no evidence = "problems_assumed" (confidence 0.1-0.3)
+
+RULE 4 - USE THE FETCHED CONTENT:
+When analyzing fetched content, extract and summarize:
+- Specific user quotes
+- Numbers and metrics mentioned
+- User behaviors described
+- Pain points expressed
+
+=== ANALYSIS PROCESS ===
+STEP 1: Count all 🟢 EVIDENCE-BACKED items → These MUST appear in validated/preliminary categories
+STEP 2: Count all 🟡 ASSUMPTION items → These go in problems_assumed
+STEP 3: For each 🟢 item, determine if strongly validated (0.6+) or preliminary (0.3-0.6) based on evidence quality
+STEP 4: Generate validation recommendations for preliminary and assumed items
+STEP 5: Evaluate checklist and constraints
 
 Provide your analysis in the following JSON format:
 {
