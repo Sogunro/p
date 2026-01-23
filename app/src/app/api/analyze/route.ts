@@ -309,6 +309,13 @@ EVIDENCE QUALITY FRAMEWORK:
 - LOW QUALITY (0.2-0.4): Single anecdotal source, no quantification
 - NO EVIDENCE (0.1-0.3): Pure assumption, no evidence attached
 
+CRITICAL CLASSIFICATION RULES:
+1. ANY sticky note marked with 🟢 EVIDENCE-BACKED that has FETCHED CONTENT should be in "problems_strongly_validated" OR "problems_with_preliminary_evidence"
+2. Items with fetched content containing specific quotes, user feedback, or data = "problems_strongly_validated" (confidence 0.6+)
+3. Items with fetched content but less specific = "problems_with_preliminary_evidence" (confidence 0.3-0.6)
+4. ONLY items with NO evidence attached (🟡 ASSUMPTION) go in "problems_assumed"
+5. Do NOT put evidence-backed items in "problems_assumed" - if they have fetched content, they are validated to some degree
+
 IMPORTANT: When fetched content is available, analyze the ACTUAL CONTENT to assess evidence quality. Look for:
 - Specific quotes and examples
 - Numbers and metrics
@@ -316,7 +323,8 @@ IMPORTANT: When fetched content is available, analyze the ACTUAL CONTENT to asse
 - Behavioral data vs opinions
 
 ANALYSIS INSTRUCTIONS:
-1. Assess evidence quality for each card using the framework above
+1. First, identify all items marked 🟢 EVIDENCE-BACKED - these MUST go in validated or preliminary categories
+2. Assess evidence quality for each card using the framework above
 2. Classify problems into 3 tiers by evidence strength:
    - TIER 1 (Strongly Validated): Confidence 0.6-1.0, multiple independent sources
    - TIER 2 (Preliminary Evidence): Confidence 0.3-0.6, 1-2 sources, needs validation
