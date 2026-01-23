@@ -474,8 +474,6 @@ Only return valid JSON, no other text.`
         constraint_analysis: analysis.constraint_analysis,
         checklist_review: analysis.checklist_review,
         raw_response: message,
-        // Also store the session_diagnosis if available
-        session_diagnosis: analysis.session_diagnosis,
       })
       .select()
       .single()
