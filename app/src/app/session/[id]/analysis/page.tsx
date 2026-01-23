@@ -164,6 +164,10 @@ export default async function AnalysisPage({ params }: PageProps) {
                   validationRecommendations: validationRecs,
                   constraintAnalysis,
                   checklistReview,
+                  sessionDiagnosis,
+                  strategicAlignment,
+                  solutionsAnalysis,
+                  nextSteps,
                 }}
               />
             </div>

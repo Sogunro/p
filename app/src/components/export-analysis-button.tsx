@@ -14,17 +14,59 @@ interface AnalysisData {
   createdAt: string
   objectiveScore: number
   summary: string
-  assumptions: { content: string; section: string }[]
-  evidenceBacked: { content: string; section: string; evidence_summary: string }[]
+  assumptions: { content: string; section: string; confidence?: number; validation_strategy?: string }[]
+  evidenceBacked: { content: string; section: string; evidence_summary: string; confidence?: number; confidence_tier?: string }[]
   validationRecommendations: {
     item: string
     confidence: string
     reason: string
     method: string
     questions: string[]
+    sample_size?: string
   }[]
   constraintAnalysis: { constraint: string; status: string; notes: string }[]
   checklistReview: { item: string; status: string; notes: string }[]
+  // New comprehensive fields
+  sessionDiagnosis?: {
+    overall_quality?: string
+    evidence_maturity?: string
+    session_nature?: string
+    key_strengths?: string[]
+    key_gaps?: string[]
+    readiness_to_build?: string
+  } | null
+  strategicAlignment?: {
+    vision_alignment_score?: number
+    vision_alignment_explanation?: string
+    goals_coverage?: { goal: string; impact: string; problems_addressed: string[] }[]
+    overall_alignment_score?: number
+  } | null
+  solutionsAnalysis?: {
+    solution: string
+    problem_solved: string
+    recommendation: string
+    budget_fit?: string
+    timeline_fit?: string
+    tech_feasibility?: string
+    reasoning?: string
+  }[]
+  nextSteps?: {
+    build_now?: { action: string; reason: string; which_solutions?: string[] }[]
+    validate_first?: { action: string; method: string; sample_size?: string; timeline?: string; questions?: string[] }[]
+    defer?: { item: string; reason: string; revisit_when?: string }[]
+  } | null
+  patternDetection?: {
+    shared_evidence?: { evidence_title: string; used_by_problems: string[] }[]
+    convergent_patterns?: { pattern: string; source_count: number }[]
+    evidence_gaps?: string[]
+  } | null
+  priorityRanking?: {
+    rank: number
+    item: string
+    type: string
+    total_score: number
+    why_this_rank?: string
+  }[]
 }
 
 interface ExportAnalysisButtonProps {
@@ -37,46 +79,218 @@ export function ExportAnalysisButton({ analysis }: ExportAnalysisButtonProps) {
 
   const generateMarkdown = () => {
     const lines: string[] = []
+    const totalCards = analysis.evidenceBacked.length + analysis.assumptions.length
+    const evidenceScore = totalCards > 0
+      ? Math.round((analysis.evidenceBacked.length / totalCards) * 100)
+      : 0
 
-    lines.push(`# Discovery Session Analysis: ${analysis.sessionTitle}`)
+    // Determine session nature
+    let sessionNature = 'assumption_driven'
+    if (evidenceScore >= 70) sessionNature = 'validated'
+    else if (evidenceScore >= 30) sessionNature = 'hybrid'
+
+    // Header
+    lines.push(`# Discovery Analysis: ${analysis.sessionTitle}`)
     lines.push(``)
-    lines.push(`**Date:** ${new Date(analysis.createdAt).toLocaleString()}`)
+    lines.push(`_Generated on ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}_`)
     lines.push(``)
 
-    // Objective Score
-    lines.push(`## Objective Score: ${analysis.objectiveScore}/100`)
+    // Session Overview
+    lines.push(`## 📊 Session Overview`)
     lines.push(``)
-    lines.push(analysis.summary)
+    lines.push(`- **Evidence Score:** ${evidenceScore}%`)
+    lines.push(`- **Evidence-based cards:** ${analysis.evidenceBacked.length}`)
+    lines.push(`- **Assumption cards:** ${analysis.assumptions.length}`)
+    lines.push(`- **Total cards:** ${totalCards}`)
+    lines.push(`- **Session Nature:** ${sessionNature}`)
+    lines.push(`- **Objective Alignment:** ${analysis.objectiveScore}%`)
+    lines.push(``)
+    lines.push(`> ${analysis.summary}`)
     lines.push(``)
 
-    // Assumption Mapping
-    lines.push(`## Assumption Mapping`)
-    lines.push(``)
-
-    if (analysis.evidenceBacked.length > 0) {
-      lines.push(`### Evidence-Backed Items (${analysis.evidenceBacked.length})`)
+    // Session Diagnosis (if available)
+    if (analysis.sessionDiagnosis) {
+      const diag = analysis.sessionDiagnosis
+      lines.push(`### Session Quality`)
       lines.push(``)
-      analysis.evidenceBacked.forEach((item) => {
-        lines.push(`- **${item.content}** (${item.section})`)
-        if (item.evidence_summary) {
-          lines.push(`  - Evidence: ${item.evidence_summary}`)
+      lines.push(`- **Overall Quality:** ${diag.overall_quality || 'N/A'}`)
+      lines.push(`- **Evidence Maturity:** ${diag.evidence_maturity || 'N/A'}`)
+      lines.push(`- **Readiness to Build:** ${diag.readiness_to_build || 'N/A'}`)
+
+      if (diag.key_strengths && diag.key_strengths.length > 0) {
+        lines.push(``)
+        lines.push(`**Strengths:**`)
+        diag.key_strengths.forEach(s => lines.push(`- ✓ ${s}`))
+      }
+
+      if (diag.key_gaps && diag.key_gaps.length > 0) {
+        lines.push(``)
+        lines.push(`**Gaps:**`)
+        diag.key_gaps.forEach(g => lines.push(`- ⚠ ${g}`))
+      }
+      lines.push(``)
+    }
+
+    // Focus Areas (derived from sections)
+    const sections = new Set<string>()
+    analysis.evidenceBacked.forEach(e => sections.add(e.section))
+    analysis.assumptions.forEach(a => sections.add(a.section))
+
+    if (sections.size > 0) {
+      lines.push(`## 🎯 Focus Areas`)
+      lines.push(``)
+      let idx = 1
+      sections.forEach(section => {
+        if (section) {
+          const count = [...analysis.evidenceBacked, ...analysis.assumptions].filter(x => x.section === section).length
+          lines.push(`${idx}. **${section}** (${count} cards)`)
+          idx++
         }
       })
       lines.push(``)
     }
 
-    if (analysis.assumptions.length > 0) {
-      lines.push(`### Unvalidated Assumptions (${analysis.assumptions.length})`)
+    // Evidence-Backed Problems (Validated)
+    if (analysis.evidenceBacked.length > 0) {
+      lines.push(`## ✅ Validated Problems`)
       lines.push(``)
-      analysis.assumptions.forEach((item) => {
-        lines.push(`- **${item.content}** (${item.section})`)
+      analysis.evidenceBacked.forEach((item, i) => {
+        const confidence = item.confidence ? Math.round(item.confidence * 100) : 70
+        lines.push(`### ${i + 1}. ${item.content}`)
+        lines.push(``)
+        lines.push(`- **Section:** ${item.section}`)
+        lines.push(`- **Confidence:** ${confidence}%`)
+        lines.push(`- **Tier:** ${item.confidence_tier || 'validated'}`)
+        if (item.evidence_summary) {
+          lines.push(`- **Evidence:** ${item.evidence_summary}`)
+        }
+        lines.push(``)
+      })
+    }
+
+    // Assumed Problems (Need Validation)
+    if (analysis.assumptions.length > 0) {
+      lines.push(`## ⚠️ Assumed Problems (Need Validation)`)
+      lines.push(``)
+      analysis.assumptions.forEach((item, i) => {
+        const confidence = item.confidence ? Math.round(item.confidence * 100) : 25
+        // Determine priority based on confidence
+        let priority = 'medium'
+        if (confidence < 30) priority = 'high'
+        else if (confidence > 50) priority = 'low'
+
+        lines.push(`### ${i + 1}. ${item.content}`)
+        lines.push(``)
+        lines.push(`- **Priority:** ${priority}`)
+        lines.push(`- **Confidence:** ${confidence}%`)
+        if (item.validation_strategy) {
+          lines.push(`- **Suggested Validation:** ${item.validation_strategy}`)
+        }
+        lines.push(``)
+      })
+    }
+
+    // Proposed Solutions
+    if (analysis.solutionsAnalysis && analysis.solutionsAnalysis.length > 0) {
+      lines.push(`## 💡 Proposed Solutions`)
+      lines.push(``)
+      analysis.solutionsAnalysis.forEach((sol, i) => {
+        lines.push(`${i + 1}. **${sol.solution}**`)
+        lines.push(`   - Addresses: ${sol.problem_solved}`)
+        lines.push(`   - Recommendation: ${sol.recommendation?.replace('_', ' ')}`)
+        if (sol.tech_feasibility) {
+          lines.push(`   - Feasibility: ${sol.tech_feasibility}`)
+        }
+        if (sol.budget_fit) {
+          lines.push(`   - Budget: ${sol.budget_fit}`)
+        }
+        if (sol.reasoning) {
+          lines.push(`   - Rationale: ${sol.reasoning}`)
+        }
       })
       lines.push(``)
     }
 
-    // Validation Recommendations
+    // Strategic Alignment
+    if (analysis.strategicAlignment) {
+      const align = analysis.strategicAlignment
+      lines.push(`## 🎯 Strategic Alignment`)
+      lines.push(``)
+      lines.push(`- **Vision Alignment:** ${align.vision_alignment_score || 0}%`)
+      lines.push(`- **Overall Alignment:** ${align.overall_alignment_score || 0}%`)
+      if (align.vision_alignment_explanation) {
+        lines.push(``)
+        lines.push(`> ${align.vision_alignment_explanation}`)
+      }
+      if (align.goals_coverage && align.goals_coverage.length > 0) {
+        lines.push(``)
+        lines.push(`### Goals Coverage`)
+        lines.push(``)
+        align.goals_coverage.forEach(g => {
+          lines.push(`- **${g.goal}**: ${g.impact} impact`)
+        })
+      }
+      lines.push(``)
+    }
+
+    // Recommended Next Steps
+    if (analysis.nextSteps) {
+      lines.push(`## 🚀 Recommended Next Steps`)
+      lines.push(``)
+
+      // High Priority - Build Now
+      if (analysis.nextSteps.build_now && analysis.nextSteps.build_now.length > 0) {
+        lines.push(`### 🟢 Ready to Build`)
+        lines.push(``)
+        analysis.nextSteps.build_now.forEach((step, i) => {
+          lines.push(`**${i + 1}. ${step.action}**`)
+          lines.push(`- Why: ${step.reason}`)
+          if (step.which_solutions && step.which_solutions.length > 0) {
+            lines.push(`- Solutions: ${step.which_solutions.join(', ')}`)
+          }
+          lines.push(``)
+        })
+      }
+
+      // Medium Priority - Validate First
+      if (analysis.nextSteps.validate_first && analysis.nextSteps.validate_first.length > 0) {
+        lines.push(`### 🟡 Validate First`)
+        lines.push(``)
+        analysis.nextSteps.validate_first.forEach((step, i) => {
+          lines.push(`**${i + 1}. ${step.action}**`)
+          lines.push(`- Method: ${step.method}`)
+          if (step.sample_size) {
+            lines.push(`- Sample Size: ${step.sample_size}`)
+          }
+          if (step.timeline) {
+            lines.push(`- Effort: ${step.timeline}`)
+          }
+          if (step.questions && step.questions.length > 0) {
+            lines.push(`- Questions:`)
+            step.questions.forEach(q => lines.push(`  - ${q}`))
+          }
+          lines.push(``)
+        })
+      }
+
+      // Low Priority - Defer
+      if (analysis.nextSteps.defer && analysis.nextSteps.defer.length > 0) {
+        lines.push(`### ⏸️ Defer`)
+        lines.push(``)
+        analysis.nextSteps.defer.forEach((step, i) => {
+          lines.push(`**${i + 1}. ${step.item}**`)
+          lines.push(`- Reason: ${step.reason}`)
+          if (step.revisit_when) {
+            lines.push(`- Revisit when: ${step.revisit_when}`)
+          }
+          lines.push(``)
+        })
+      }
+    }
+
+    // Validation Recommendations (detailed)
     if (analysis.validationRecommendations.length > 0) {
-      lines.push(`## Validation Recommendations`)
+      lines.push(`## 📋 Validation Playbook`)
       lines.push(``)
       analysis.validationRecommendations.forEach((rec, i) => {
         lines.push(`### ${i + 1}. ${rec.item}`)
@@ -84,6 +298,9 @@ export function ExportAnalysisButton({ analysis }: ExportAnalysisButtonProps) {
         lines.push(`- **Confidence:** ${rec.confidence}`)
         lines.push(`- **Why:** ${rec.reason}`)
         lines.push(`- **Method:** ${rec.method}`)
+        if (rec.sample_size) {
+          lines.push(`- **Sample Size:** ${rec.sample_size}`)
+        }
         if (rec.questions && rec.questions.length > 0) {
           lines.push(`- **Questions to answer:**`)
           rec.questions.forEach((q) => {
@@ -96,27 +313,59 @@ export function ExportAnalysisButton({ analysis }: ExportAnalysisButtonProps) {
 
     // Constraint Analysis
     if (analysis.constraintAnalysis.length > 0) {
-      lines.push(`## Constraint Alignment`)
+      lines.push(`## ⚙️ Constraint Alignment`)
       lines.push(``)
       lines.push(`| Constraint | Status | Notes |`)
       lines.push(`|------------|--------|-------|`)
       analysis.constraintAnalysis.forEach((item) => {
-        lines.push(`| ${item.constraint} | ${item.status} | ${item.notes} |`)
+        const statusEmoji = item.status === 'aligned' ? '✓' : item.status === 'warning' ? '⚠' : '✕'
+        lines.push(`| ${item.constraint} | ${statusEmoji} ${item.status} | ${item.notes} |`)
       })
       lines.push(``)
     }
 
     // Checklist Review
     if (analysis.checklistReview.length > 0) {
-      lines.push(`## Checklist Review`)
+      lines.push(`## ✅ Checklist Review`)
       lines.push(``)
       lines.push(`| Item | Status | Notes |`)
       lines.push(`|------|--------|-------|`)
       analysis.checklistReview.forEach((item) => {
-        lines.push(`| ${item.item} | ${item.status} | ${item.notes} |`)
+        const statusEmoji = item.status === 'met' ? '✓' : item.status === 'partially' ? '◐' : '✕'
+        lines.push(`| ${item.item} | ${statusEmoji} ${item.status} | ${item.notes} |`)
       })
       lines.push(``)
     }
+
+    // Summary
+    lines.push(`## 📝 Summary`)
+    lines.push(``)
+
+    // Generate a comprehensive summary
+    const summaryParts: string[] = []
+
+    if (evidenceScore < 30) {
+      summaryParts.push(`The analysis reveals a discovery phase with substantial evidentiary gaps (${evidenceScore}% evidence score).`)
+    } else if (evidenceScore < 70) {
+      summaryParts.push(`The analysis shows a hybrid discovery phase with moderate evidence backing (${evidenceScore}% evidence score).`)
+    } else {
+      summaryParts.push(`The analysis demonstrates a well-validated discovery phase (${evidenceScore}% evidence score).`)
+    }
+
+    if (analysis.assumptions.length > 0) {
+      summaryParts.push(`${analysis.assumptions.length} items remain as assumptions requiring validation before proceeding.`)
+    }
+
+    if (analysis.sessionDiagnosis?.readiness_to_build === 'ready') {
+      summaryParts.push(`The session is ready for solution development.`)
+    } else if (analysis.sessionDiagnosis?.readiness_to_build === 'needs_validation') {
+      summaryParts.push(`A 'validate first' strategy is recommended before building.`)
+    } else {
+      summaryParts.push(`Further discovery work is recommended to strengthen evidence.`)
+    }
+
+    lines.push(summaryParts.join(' '))
+    lines.push(``)
 
     lines.push(`---`)
     lines.push(`*Generated by Product Discovery Tool*`)
@@ -130,9 +379,16 @@ export function ExportAnalysisButton({ analysis }: ExportAnalysisButtonProps) {
       exportedAt: new Date().toISOString(),
       analysisDate: analysis.createdAt,
       objectiveScore: analysis.objectiveScore,
+      evidenceScore: analysis.evidenceBacked.length + analysis.assumptions.length > 0
+        ? Math.round((analysis.evidenceBacked.length / (analysis.evidenceBacked.length + analysis.assumptions.length)) * 100)
+        : 0,
       summary: analysis.summary,
+      sessionDiagnosis: analysis.sessionDiagnosis,
+      strategicAlignment: analysis.strategicAlignment,
       assumptions: analysis.assumptions,
       evidenceBacked: analysis.evidenceBacked,
+      solutionsAnalysis: analysis.solutionsAnalysis,
+      nextSteps: analysis.nextSteps,
       validationRecommendations: analysis.validationRecommendations,
       constraintAnalysis: analysis.constraintAnalysis,
       checklistReview: analysis.checklistReview,
@@ -151,7 +407,7 @@ export function ExportAnalysisButton({ analysis }: ExportAnalysisButtonProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${analysis.sessionTitle.replace(/[^a-z0-9]/gi, '_')}_analysis.md`
+    a.download = `${analysis.sessionTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-analysis.md`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -164,7 +420,7 @@ export function ExportAnalysisButton({ analysis }: ExportAnalysisButtonProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${analysis.sessionTitle.replace(/[^a-z0-9]/gi, '_')}_analysis.json`
+    a.download = `${analysis.sessionTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase()}-analysis.json`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
