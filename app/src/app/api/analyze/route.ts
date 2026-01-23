@@ -143,6 +143,23 @@ export async function POST(request: NextRequest) {
       value: sc.constraints.value,
     }))
 
+    // Debug: Log evidence data to verify fetched_content is being retrieved
+    console.log('=== ANALYZE DEBUG: Evidence Data ===')
+    session.sections.forEach((section: { name: string; sticky_notes: { id: string; content: string; evidence: { fetched_content: string | null; fetch_status: string | null; url: string | null }[] }[] }) => {
+      section.sticky_notes.forEach((note: { id: string; content: string; evidence: { fetched_content: string | null; fetch_status: string | null; url: string | null }[] }) => {
+        if (note.evidence && note.evidence.length > 0) {
+          console.log(`Note "${note.content.substring(0, 50)}..." has ${note.evidence.length} evidence items:`)
+          note.evidence.forEach((e: { fetched_content: string | null; fetch_status: string | null; url: string | null }, i: number) => {
+            console.log(`  ${i + 1}. fetch_status: ${e.fetch_status}, has_fetched_content: ${!!e.fetched_content}, url: ${e.url?.substring(0, 50)}`)
+            if (e.fetched_content) {
+              console.log(`     fetched_content preview: ${e.fetched_content.substring(0, 100)}...`)
+            }
+          })
+        }
+      })
+    })
+    console.log('=== END ANALYZE DEBUG ===')
+
     const stickyNotes = session.sections.flatMap((section: { name: string; sticky_notes: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }[] }[] }) =>
       section.sticky_notes.map((note: { id: string; content: string; has_evidence: boolean; evidence: { type: string; url: string | null; content: string | null; title: string | null; strength: string | null; fetched_content: string | null; fetch_status: string | null }[] }) => {
         // Get linked evidence from evidence_bank (with fetched content)
