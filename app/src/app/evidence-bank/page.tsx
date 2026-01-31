@@ -91,6 +91,8 @@ export default function EvidenceBankPage() {
   const [recentExternalCount, setRecentExternalCount] = useState(0)
   const [unembeddedCount, setUnembeddedCount] = useState(0)
   const [showNewBanner, setShowNewBanner] = useState(true)
+  const [syncLoading, setSyncLoading] = useState(false)
+  const [syncStatus, setSyncStatus] = useState('')
 
   useEffect(() => {
     fetchEvidence()
@@ -347,6 +349,27 @@ export default function EvidenceBankPage() {
     }
   }
 
+  const handleSyncInsights = async () => {
+    setSyncLoading(true)
+    setSyncStatus('')
+    try {
+      const response = await fetch('/api/insights-feed/sync-to-bank', {
+        method: 'POST',
+      })
+      const data = await response.json()
+      setSyncStatus(data.message || 'Sync complete')
+      if (data.synced > 0) {
+        fetchEvidence()
+        fetchPendingInsights()
+      }
+    } catch (error) {
+      console.error('Sync failed:', error)
+      setSyncStatus('Sync failed')
+    } finally {
+      setSyncLoading(false)
+    }
+  }
+
   const toggleFetchSource = (source: SourceSystem) => {
     setSelectedFetchSources((prev) =>
       prev.includes(source)
@@ -392,6 +415,16 @@ export default function EvidenceBankPage() {
               <h1 className="text-xl font-bold">Evidence Bank</h1>
             </div>
             <div className="flex items-center gap-2">
+              {pendingInsights.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handleSyncInsights}
+                  disabled={syncLoading}
+                  className="flex items-center gap-2 text-green-600 border-green-200 hover:bg-green-50"
+                >
+                  {syncLoading ? 'Syncing...' : `Sync ${pendingInsights.length} Insights`}
+                </Button>
+              )}
               <Link href="/insights">
                 <Button variant="outline">View Insights Feed</Button>
               </Link>
@@ -480,6 +513,18 @@ export default function EvidenceBankPage() {
           <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center justify-between">
             <span>{embedStatus}</span>
             <button onClick={() => setEmbedStatus('')} className="text-blue-500 hover:text-blue-700 ml-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Sync status notification */}
+        {syncStatus && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800 flex items-center justify-between">
+            <span>{syncStatus}</span>
+            <button onClick={() => setSyncStatus('')} className="text-green-500 hover:text-green-700 ml-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -874,10 +919,27 @@ export default function EvidenceBankPage() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No evidence found</h3>
               <p className="text-gray-500 mb-4">
                 {searchQuery || filterSource !== 'all' || filterStrength !== 'all'
-                  ? 'Try adjusting your filters'
-                  : 'Start building your evidence bank by adding evidence manually or connecting your tools.'}
+                  ? 'Try adjusting your filters or switching to the "All" tab.'
+                  : 'Start building your evidence bank by adding evidence manually, connecting your tools, or syncing from your Insights Feed.'}
               </p>
-              <Button onClick={() => setShowAddDialog(true)}>+ Add Evidence</Button>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={() => setShowAddDialog(true)}>+ Add Evidence</Button>
+                {pendingInsights.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleSyncInsights}
+                    disabled={syncLoading}
+                    className="text-green-600 border-green-200 hover:bg-green-50"
+                  >
+                    {syncLoading ? 'Syncing...' : `Sync ${pendingInsights.length} Insights to Bank`}
+                  </Button>
+                )}
+              </div>
+              {pendingInsights.length > 0 && (
+                <p className="text-xs text-gray-400 mt-3">
+                  You have {pendingInsights.length} insight{pendingInsights.length !== 1 ? 's' : ''} from external sources waiting to be added.
+                </p>
+              )}
             </CardContent>
           </Card>
         ) : null}
