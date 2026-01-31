@@ -30,6 +30,14 @@ export default async function DashboardPage() {
     .eq('id', user.id)
     .single()
 
+  // Fetch latest agent alerts (unread)
+  const { data: agentAlerts } = await supabase
+    .from('agent_alerts')
+    .select('id, agent_type, alert_type, title, content, is_read, created_at')
+    .eq('is_dismissed', false)
+    .order('created_at', { ascending: false })
+    .limit(5)
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft':
@@ -152,6 +160,59 @@ export default async function DashboardPage() {
               </Link>
             </CardContent>
           </Card>
+        )}
+
+        {/* Agent Activity */}
+        {agentAlerts && agentAlerts.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Agent Activity</h2>
+            <Card>
+              <CardContent className="p-4">
+                <div className="space-y-3">
+                  {agentAlerts.map((alert) => {
+                    const agentIcons: Record<string, string> = {
+                      evidence_hunter: '\uD83D\uDD0D',
+                      decay_monitor: '\u23F0',
+                      contradiction_detector: '\u26A1',
+                      analysis_crew: '\uD83E\uDDE0',
+                      competitor_monitor: '\uD83D\uDCCA',
+                    }
+                    const alertColors: Record<string, string> = {
+                      info: 'bg-blue-50 border-blue-200',
+                      warning: 'bg-yellow-50 border-yellow-200',
+                      action_needed: 'bg-red-50 border-red-200',
+                    }
+                    return (
+                      <div
+                        key={alert.id}
+                        className={`p-3 rounded-lg border ${alertColors[alert.alert_type] || 'bg-gray-50 border-gray-200'} ${
+                          !alert.is_read ? 'ring-1 ring-blue-300' : ''
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-lg">{agentIcons[alert.agent_type] || '\uD83E\uDD16'}</span>
+                          <span className="text-sm font-medium text-gray-900 flex-1 truncate">
+                            {alert.title}
+                          </span>
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {formatDate(alert.created_at)}
+                          </span>
+                          {!alert.is_read && (
+                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+                          )}
+                        </div>
+                        {alert.content && (
+                          <p className="text-xs text-gray-600 line-clamp-2 ml-7">
+                            {alert.content.slice(0, 150)}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </main>
     </div>

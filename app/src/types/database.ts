@@ -950,6 +950,51 @@ export interface Database {
           recorded_at?: string
         }
       }
+      // Phase E: AI Agents
+      agent_alerts: {
+        Row: {
+          id: string
+          workspace_id: string
+          agent_type: AgentType
+          alert_type: AlertType
+          title: string
+          content: string
+          metadata: Json
+          related_decision_id: string | null
+          related_evidence_ids: string[]
+          is_read: boolean
+          is_dismissed: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          agent_type: AgentType
+          alert_type?: AlertType
+          title: string
+          content?: string
+          metadata?: Json
+          related_decision_id?: string | null
+          related_evidence_ids?: string[]
+          is_read?: boolean
+          is_dismissed?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          agent_type?: AgentType
+          alert_type?: AlertType
+          title?: string
+          content?: string
+          metadata?: Json
+          related_decision_id?: string | null
+          related_evidence_ids?: string[]
+          is_read?: boolean
+          is_dismissed?: boolean
+          created_at?: string
+        }
+      }
     }
   }
 }
@@ -987,6 +1032,11 @@ export type SectionType = 'general' | 'problems' | 'solutions' | 'assumptions' |
 export type DecisionStatus = 'commit' | 'validate' | 'park'
 export type Decision = Database['public']['Tables']['decisions']['Row']
 export type EvidenceDecisionLink = Database['public']['Tables']['evidence_decision_links']['Row']
+
+// Phase E: AI Agent types
+export type AgentType = 'evidence_hunter' | 'decay_monitor' | 'contradiction_detector' | 'competitor_monitor' | 'analysis_crew'
+export type AlertType = 'info' | 'warning' | 'action_needed'
+export type AgentAlert = Database['public']['Tables']['agent_alerts']['Row']
 
 // Phase D: Vector Search types
 export interface VectorSearchResult {

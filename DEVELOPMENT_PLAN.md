@@ -1,8 +1,8 @@
 # Discovery OS — Development Plan
 
-**Last updated:** 2026-01-31 (Phase D complete)
-**Spec coverage:** ~62% built → targeting 100% across 8 phases
-**Current DB tables:** 27 | **API routes:** 29 | **Pages:** 19
+**Last updated:** 2026-01-31 (Phase E complete)
+**Spec coverage:** ~72% built → targeting 100% across 8 phases
+**Current DB tables:** 28 | **API routes:** 34 | **Pages:** 19
 
 ---
 
@@ -14,8 +14,8 @@
 | B | Decision Records MVP | COMPLETE | Decisions table, CRUD, log page, detail page, executive brief, gate logic, override mechanic |
 | C | Enhanced Canvas | COMPLETE | Section types, sort/filter, constraint indicators, source diversity, unvalidated warnings |
 | D | Vector Search + Enrichment | COMPLETE | pgvector, embeddings, similarity search, Python service, smart search UI |
-| E | AI Agents | UP NEXT | Evidence Hunter, Decay Monitor, Contradiction Detector, Competitor Monitor |
-| F | Discovery Brief + External Push | PLANNED | Brief generation, Linear/Jira integration |
+| E | AI Agents | COMPLETE | Evidence Hunter, Decay Monitor, Contradiction Detector, Analysis Crew |
+| F | Discovery Brief + External Push | UP NEXT | Brief generation, Linear/Jira integration |
 | G | Outcomes + Calibration | PLANNED | Outcomes tracking, calibration dashboard |
 | H | Polish + Portfolio | PLANNED | Demo data, loading states, architecture docs |
 
@@ -357,56 +357,99 @@ The spec defines 4 AI agents that automate the grunt work so PMs can focus on ju
 
 ---
 
-## Phase E: AI Agents — UP NEXT
+## Phase E: AI Agents — COMPLETE
 
-**Goal:** Automate evidence gathering, staleness detection, contradiction flagging, and competitor monitoring. This is the intelligence layer.
+**Goal:** Automate evidence gathering, staleness detection, contradiction flagging, and deep analysis. This is the intelligence layer.
 
-### Depends on
-- Phase D (Python service + embeddings) — required for Evidence Hunter + Contradiction Detector
-- Phase B (decisions) — required for Decay Monitor decision awareness
-- Phase A (evidence strength + recency) — already COMPLETE
+### What was built
 
-### Agent 1: Evidence Hunter (P1)
-- Install langgraph, langchain, langchain-anthropic in Python service
-- Define `EvidenceHunterState` (hypothesis, queries, results, filtered)
-- Build nodes: `generate_queries` → `search_vector` → `filter_rank`
-- Add conditional looping (search more if < 3 relevant results)
-- Expose via `POST /agent/hunt`
-- n8n: Supabase webhook on hypothesis status change → call `/agent/hunt`
-- Next.js: `POST /api/agent/validate` → triggers pipeline, returns results
-- UI: "Hunting for evidence..." loading state + results notification
+**SQL Migration** (`supabase_phase_e_agents.sql`):
+- `agent_alerts` table (#28) with RLS policies and indexes
+- Supports 5 agent types: evidence_hunter, decay_monitor, contradiction_detector, competitor_monitor, analysis_crew
+- Alert types: info, warning, action_needed
+- JSONB metadata for agent-specific structured data
 
-### Agent 2: Decay Monitor (P2)
-- n8n: Scheduled workflow (daily 6 AM)
-- Query: active hypotheses with evidence age > 21 days OR declining confidence
-- Generate daily digest (Claude prompt)
-- Send via Slack webhook or in-app notification
-- Next.js: `/api/agent/health-report` → returns current health status
-- UI: Evidence health summary on dashboard
+**Python Service — New Dependencies** (`embedding-service/requirements.txt`):
+- langgraph, langchain, langchain-anthropic, crewai, anthropic, supabase, httpx
 
-### Agent 3: Contradiction Detector (P2)
-- Trigger: new evidence webhook → Python service
-- Search similar evidence via pgvector (similarity > 0.8)
-- Compare sentiment + segment + source independence
-- If contradiction: store alert, notify PM
-- Next.js: `POST /api/agent/contradictions` → returns active contradictions
-- UI: Contradiction alerts on evidence popover and dashboard
+**Python Service — Infrastructure**:
+- `embedding-service/config.py` — Shared env config (Supabase, Anthropic, model settings)
+- `embedding-service/db.py` — Supabase client helper using service role key
 
-### Agent 4: Competitor & Market Monitor (P3)
-- n8n: Scheduled weekly workflow
-- Extract keywords from active feature specs / decisions
-- Scrape: competitor changelogs, Product Hunt, tech news
-- LangGraph: relevance analysis (filter noise, classify similarity)
-- If match: store alert, update decision record with market context
-- UI: Competitor movement indicator on decision detail page
+**Agent 1: Evidence Hunter** (`embedding-service/agents/evidence_hunter.py`):
+- LangGraph agent with 5 nodes: generate_queries → search_vector → filter_rank → summarize → store_results
+- Conditional looping: if < 3 results and < 2 iterations, refines queries and searches again
+- Uses `search_evidence()` RPC for vector similarity search
+- Auto-links found evidence to decisions, recalculates strength
+- Endpoint: `POST /agent/hunt`
 
-### CrewAI Analysis Crew (P2)
-- Install crewai in Python service
-- Define 3 agents: Sentiment Analyst, Theme Synthesizer, Validator
-- Define tasks and crew workflow
-- Expose via `POST /crew/analyze`
-- Next.js: `POST /api/agent/analyze` → triggers crew analysis
-- UI: Enhanced analysis results showing role-based insights
+**Agent 2: Decay Monitor** (`embedding-service/agents/decay_monitor.py`):
+- Sequential flow checking for stale evidence on active decisions
+- Flag conditions: evidence >21 days old, >50% older than 90 days, strength <40 with commit status
+- Claude generates markdown digest report
+- Endpoint: `POST /agent/decay-report`
+- n8n: Daily scheduled trigger
+
+**Agent 3: Contradiction Detector** (`embedding-service/agents/contradiction_detector.py`):
+- Searches similar evidence via pgvector (similarity >0.75)
+- Sentiment-based contradiction detection from independent sources
+- Claude semantic analysis fallback when sentiment data missing
+- Endpoint: `POST /agent/detect-contradictions`
+- Fire-and-forget trigger after evidence embedding
+
+**Agent 4: Analysis Crew** (`embedding-service/agents/analysis_crew.py`):
+- CrewAI with 3 agents: Sentiment Analyst, Theme Synthesizer, Validator
+- Sequential process: sentiment → themes → validation
+- Claude generates executive summary from crew outputs
+- Endpoint: `POST /crew/analyze`
+
+**Note:** Competitor & Market Monitor (Agent 4 from original plan) was replaced with the CrewAI Analysis Crew as a higher-priority deliverable. Competitor Monitor can be added in a future phase.
+
+**Next.js API Routes**:
+- `POST /api/agent/hunt` — Evidence Hunter trigger
+- `POST /api/agent/decay-report` — Decay Monitor trigger
+- `POST /api/agent/detect-contradictions` — Contradiction Detector trigger
+- `POST /api/agent/analyze` — CrewAI Analysis trigger
+- `GET/PATCH /api/agent/alerts` — Alert listing and management
+
+**UI Updates**:
+- Dashboard: Agent Activity card showing latest 5 alerts with type icons
+- Decision detail: "Hunt Evidence" button (status = validate/park), "Deep Analysis" button (2+ evidence)
+- Decision detail: Agent results display sections and decision-related alerts
+
+### Files created
+| # | File | Purpose |
+|---|------|---------|
+| 1 | `supabase_phase_e_agents.sql` | SQL migration for agent_alerts table |
+| 2 | `embedding-service/config.py` | Shared env config |
+| 3 | `embedding-service/db.py` | Supabase client helper |
+| 4 | `embedding-service/agents/__init__.py` | Package init |
+| 5 | `embedding-service/agents/evidence_hunter.py` | LangGraph Evidence Hunter |
+| 6 | `embedding-service/agents/decay_monitor.py` | Decay Monitor |
+| 7 | `embedding-service/agents/contradiction_detector.py` | Contradiction Detector |
+| 8 | `embedding-service/agents/analysis_crew.py` | CrewAI Analysis Crew |
+| 9 | `app/src/app/api/agent/hunt/route.ts` | Evidence Hunter API route |
+| 10 | `app/src/app/api/agent/decay-report/route.ts` | Decay Report API route |
+| 11 | `app/src/app/api/agent/detect-contradictions/route.ts` | Contradiction API route |
+| 12 | `app/src/app/api/agent/analyze/route.ts` | CrewAI Analysis API route |
+| 13 | `app/src/app/api/agent/alerts/route.ts` | Alert management API route |
+
+### Files modified
+| # | File | Changes |
+|---|------|---------|
+| 1 | `embedding-service/requirements.txt` | Added langgraph, crewai, anthropic, supabase deps |
+| 2 | `embedding-service/main.py` | Added 4 agent endpoints, updated version to 2.0.0 |
+| 3 | `embedding-service/.env.example` | Added ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY |
+| 4 | `app/src/types/database.ts` | Added agent_alerts types, AgentType, AlertType |
+| 5 | `app/src/app/dashboard/page.tsx` | Added Agent Activity card |
+| 6 | `app/src/app/decisions/[id]/page.tsx` | Added Hunt + Deep Analysis buttons, results display, alerts |
+
+### Deployment steps
+1. Run `supabase_phase_e_agents.sql` in Supabase SQL Editor
+2. Set Railway env vars: `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+3. Deploy Python service to Railway (new deps will install)
+4. Deploy Next.js to Vercel (automatic on push)
+5. Set up n8n daily workflow for Decay Monitor
 
 ---
 

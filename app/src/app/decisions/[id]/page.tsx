@@ -58,6 +58,14 @@ export default function DecisionDetailPage() {
   const [brief, setBrief] = useState('')
   const [briefLoading, setBriefLoading] = useState(false)
 
+  // Agent state
+  const [huntLoading, setHuntLoading] = useState(false)
+  const [huntResult, setHuntResult] = useState<{ found: number; summary: string } | null>(null)
+  const [crewLoading, setCrewLoading] = useState(false)
+  const [crewResult, setCrewResult] = useState<{ summary: string } | null>(null)
+  const [decisionAlerts, setDecisionAlerts] = useState<Array<{ id: string; agent_type: string; alert_type: string; title: string; content: string; created_at: string }>>([])
+
+
   useEffect(() => {
     fetchDecision()
   }, [decisionId])
@@ -217,6 +225,75 @@ export default function DecisionDetailPage() {
     }
   }
 
+  // Fetch alerts for this decision
+  useEffect(() => {
+    if (decisionId) {
+      fetch(`/api/agent/alerts?decision_id=${decisionId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => { if (data?.alerts) setDecisionAlerts(data.alerts) })
+        .catch(() => {})
+    }
+  }, [decisionId])
+
+  async function handleHuntEvidence() {
+    if (!decision) return
+    setHuntLoading(true)
+    setHuntResult(null)
+    try {
+      const res = await fetch('/api/agent/hunt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hypothesis: decision.hypothesis || decision.title,
+          decision_id: decisionId,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setHuntResult({ found: data.found || 0, summary: data.summary || '' })
+        // Refresh decision data to get updated evidence links
+        fetchDecision()
+        // Refresh alerts
+        const alertsRes = await fetch(`/api/agent/alerts?decision_id=${decisionId}`)
+        if (alertsRes.ok) {
+          const alertsData = await alertsRes.json()
+          setDecisionAlerts(alertsData.alerts || [])
+        }
+      }
+    } catch (error) {
+      console.error('Evidence Hunt failed:', error)
+    } finally {
+      setHuntLoading(false)
+    }
+  }
+
+  async function handleDeepAnalysis() {
+    if (!decision) return
+    setCrewLoading(true)
+    setCrewResult(null)
+    try {
+      const res = await fetch('/api/agent/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision_id: decisionId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setCrewResult({ summary: data.summary || '' })
+        // Refresh alerts
+        const alertsRes = await fetch(`/api/agent/alerts?decision_id=${decisionId}`)
+        if (alertsRes.ok) {
+          const alertsData = await alertsRes.json()
+          setDecisionAlerts(alertsData.alerts || [])
+        }
+      }
+    } catch (error) {
+      console.error('Deep Analysis failed:', error)
+    } finally {
+      setCrewLoading(false)
+    }
+  }
+
   async function handleGenerateBrief() {
     setBriefLoading(true)
     try {
@@ -269,6 +346,16 @@ export default function DecisionDetailPage() {
               <h1 className="text-lg font-bold text-gray-900 truncate">{decision.title}</h1>
             </div>
             <div className="flex gap-2">
+              {(decision.status === 'validate' || decision.status === 'park') && (
+                <Button variant="outline" size="sm" onClick={handleHuntEvidence} disabled={huntLoading} className="text-purple-600 border-purple-200 hover:bg-purple-50">
+                  {huntLoading ? 'Hunting...' : 'Hunt Evidence'}
+                </Button>
+              )}
+              {linkedEvidence.length >= 2 && (
+                <Button variant="outline" size="sm" onClick={handleDeepAnalysis} disabled={crewLoading} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                  {crewLoading ? 'Analyzing...' : 'Deep Analysis'}
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={handleGenerateBrief} disabled={briefLoading}>
                 {briefLoading ? 'Generating...' : 'Generate Brief'}
               </Button>
@@ -549,6 +636,99 @@ export default function DecisionDetailPage() {
                     >
                       Dismiss
                     </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Evidence Hunt Results */}
+            {huntResult && (
+              <Card className="border-purple-200">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-lg text-purple-700">Evidence Hunt Results</CardTitle>
+                    <Button variant="ghost" size="sm" onClick={() => setHuntResult(null)}>
+                      Dismiss
+                    </Button>
+                  </div>
+                  <CardDescription>
+                    Found {huntResult.found} relevant evidence item{huntResult.found !== 1 ? 's' : ''}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none whitespace-pre-wrap text-gray-700">
+                    {huntResult.summary}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Deep Analysis Results */}
+            {crewResult && (
+              <Card className="border-indigo-200">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle className="text-lg text-indigo-700">Deep Analysis</CardTitle>
+                    <Button variant="ghost" size="sm" onClick={() => setCrewResult(null)}>
+                      Dismiss
+                    </Button>
+                  </div>
+                  <CardDescription>
+                    Multi-agent analysis by Sentiment Analyst, Theme Synthesizer, and Validator
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none whitespace-pre-wrap text-gray-700">
+                    {crewResult.summary}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Agent Alerts for this Decision */}
+            {decisionAlerts.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Agent Activity</CardTitle>
+                  <CardDescription>{decisionAlerts.length} alert{decisionAlerts.length !== 1 ? 's' : ''} for this decision</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {decisionAlerts.map((alert) => {
+                      const agentIcons: Record<string, string> = {
+                        evidence_hunter: '\uD83D\uDD0D',
+                        decay_monitor: '\u23F0',
+                        contradiction_detector: '\u26A1',
+                        analysis_crew: '\uD83E\uDDE0',
+                        competitor_monitor: '\uD83D\uDCCA',
+                      }
+                      const alertColors: Record<string, string> = {
+                        info: 'bg-blue-50 border-blue-200',
+                        warning: 'bg-yellow-50 border-yellow-200',
+                        action_needed: 'bg-red-50 border-red-200',
+                      }
+                      return (
+                        <div
+                          key={alert.id}
+                          className={`p-3 rounded-lg border ${alertColors[alert.alert_type] || 'bg-gray-50 border-gray-200'}`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">{agentIcons[alert.agent_type] || '\uD83E\uDD16'}</span>
+                            <span className="text-sm font-medium text-gray-900 flex-1 truncate">
+                              {alert.title}
+                            </span>
+                            <span className="text-xs text-gray-400 shrink-0">
+                              {new Date(alert.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                          {alert.content && (
+                            <p className="text-xs text-gray-600 line-clamp-3 ml-7">
+                              {alert.content.slice(0, 300)}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </CardContent>
               </Card>
