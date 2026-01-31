@@ -155,36 +155,47 @@ async function handleAIAnalyzedPayload(
     return NextResponse.json({ error: 'Failed to insert insights' }, { status: 500 })
   }
 
-  // Also add individual insights to Evidence Bank for sticky note referencing
+  // Also add individual insights to Evidence Bank for referencing and vector search
   const evidenceBankItems = insights.map((insight) => ({
     workspace_id,
     title: insight.title,
-    type: insight.source_url ? 'url' : 'text',
+    type: insight.source_url ? 'url' as const : 'text' as const,
     url: insight.source_url || null,
     content: insight.description || null,
-    strength: insight.strength === 'strong' ? 'high' : insight.strength === 'weak' ? 'low' : 'medium',
+    strength: insight.strength === 'strong' ? 'high' as const : insight.strength === 'weak' ? 'low' as const : 'medium' as const,
     source_system: insight.source,
+    tags: insight.tags || [],
+    sentiment: insight.sentiment || null,
     source_metadata: {
       pain_points: insight.pain_points || [],
       feature_requests: insight.feature_requests || [],
-      sentiment: insight.sentiment || null,
       key_quotes: insight.key_quotes || [],
-      tags: insight.tags || [],
       from_insights_feed: true,
       analysis_date: analysisDate,
     },
-    created_by: null, // System-created, no user
+    created_by: null,
   }))
 
-  const { data: bankInserted, error: bankError } = await supabase
-    .from('evidence_bank')
-    .insert(evidenceBankItems)
-    .select()
+  let bankInserted: unknown[] | null = null
+  let bankError: string | null = null
 
-  if (bankError) {
-    console.error('Error adding insights to evidence bank:', bankError)
-    // Don't fail the whole request, just log the error
+  // Insert one at a time to identify failures
+  const bankResults: unknown[] = []
+  for (const item of evidenceBankItems) {
+    const { data, error } = await supabase
+      .from('evidence_bank')
+      .insert(item)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Evidence bank insert error:', error.message, error.details, error.hint)
+      bankError = error.message
+    } else if (data) {
+      bankResults.push(data)
+    }
   }
+  bankInserted = bankResults.length > 0 ? bankResults : null
 
   // Update last_fetch_at in workspace settings
   await supabase
@@ -197,9 +208,10 @@ async function handleAIAnalyzedPayload(
     format: 'ai_analyzed',
     inserted: inserted?.length || 0,
     added_to_bank: bankInserted?.length || 0,
+    bank_error: bankError,
     analysis_id: analysis?.id || null,
     sources: sourcesIncluded,
-    message: `Successfully added ${inserted?.length || 0} AI-analyzed insights (${bankInserted?.length || 0} to Evidence Bank)`
+    message: `Successfully added ${inserted?.length || 0} AI-analyzed insights (${bankInserted?.length || 0} to Evidence Bank)${bankError ? ` [bank error: ${bankError}]` : ''}`
   })
 }
 
@@ -257,6 +269,30 @@ async function handleLegacyPayload(
     return NextResponse.json({ error: 'Failed to insert insights' }, { status: 500 })
   }
 
+  // Also add to Evidence Bank so items appear there and can be embedded
+  const evidenceBankItems = items.map((item) => ({
+    workspace_id,
+    title: item.title,
+    type: item.url ? 'url' as const : 'text' as const,
+    url: item.url || null,
+    content: item.content || null,
+    strength: item.strength === 'high' ? 'high' as const : item.strength === 'low' ? 'low' as const : 'medium' as const,
+    source_system,
+    tags: [] as string[],
+    source_metadata: item.source_metadata || {},
+    created_by: null,
+  }))
+
+  let addedToBank = 0
+  for (const item of evidenceBankItems) {
+    const { error } = await supabase
+      .from('evidence_bank')
+      .insert(item)
+
+    if (!error) addedToBank++
+    else console.error('Legacy bank insert error:', error.message)
+  }
+
   // Update last_fetch_at in workspace settings
   await supabase
     .from('workspace_settings')
@@ -267,7 +303,8 @@ async function handleLegacyPayload(
     success: true,
     format: 'legacy',
     inserted: inserted?.length || 0,
-    message: `Successfully added ${inserted?.length || 0} insights from ${source_system}`
+    added_to_bank: addedToBank,
+    message: `Successfully added ${inserted?.length || 0} insights from ${source_system} (${addedToBank} to Evidence Bank)`
   })
 }
 

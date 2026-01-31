@@ -87,6 +87,11 @@ export default function EvidenceBankPage() {
   const [pendingInsights, setPendingInsights] = useState<InsightsFeed[]>([])
   const [showPendingSection, setShowPendingSection] = useState(true)
 
+  // New evidence notification
+  const [recentExternalCount, setRecentExternalCount] = useState(0)
+  const [unembeddedCount, setUnembeddedCount] = useState(0)
+  const [showNewBanner, setShowNewBanner] = useState(true)
+
   useEffect(() => {
     fetchEvidence()
     fetchEvidenceStatus()
@@ -166,7 +171,19 @@ export default function EvidenceBankPage() {
       const response = await fetch('/api/evidence-bank')
       if (response.ok) {
         const data = await response.json()
-        setEvidence(data.evidence || [])
+        const items: EvidenceBank[] = data.evidence || []
+        setEvidence(items)
+
+        // Count recently added external evidence (last 24h, non-manual)
+        const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+        const recentExternal = items.filter(e =>
+          e.source_system !== 'manual' && e.created_at > oneDayAgo
+        )
+        setRecentExternalCount(recentExternal.length)
+
+        // Count items without embeddings
+        const noEmbedding = items.filter(e => !e.embedding)
+        setUnembeddedCount(noEmbedding.length)
       }
     } catch (error) {
       console.error('Failed to fetch evidence:', error)
@@ -463,6 +480,44 @@ export default function EvidenceBankPage() {
           <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center justify-between">
             <span>{embedStatus}</span>
             <button onClick={() => setEmbedStatus('')} className="text-blue-500 hover:text-blue-700 ml-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* New evidence collected notification */}
+        {showNewBanner && recentExternalCount > 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-sm text-green-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📥</span>
+              <span>
+                <strong>{recentExternalCount} new evidence item{recentExternalCount !== 1 ? 's' : ''}</strong> collected from external sources in the last 24 hours.
+                {unembeddedCount > 0 && (
+                  <> Click <strong>Embed All</strong> to enable semantic search on {unembeddedCount} unembedded item{unembeddedCount !== 1 ? 's' : ''}.</>
+                )}
+              </span>
+            </div>
+            <button onClick={() => setShowNewBanner(false)} className="text-green-500 hover:text-green-700 ml-2 shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Unembedded items reminder (when no recent external but still unembedded) */}
+        {showNewBanner && recentExternalCount === 0 && unembeddedCount > 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">💡</span>
+              <span>
+                <strong>{unembeddedCount} evidence item{unembeddedCount !== 1 ? 's' : ''}</strong> need embedding for semantic search.
+                Click <strong>Embed All</strong> to generate embeddings.
+              </span>
+            </div>
+            <button onClick={() => setShowNewBanner(false)} className="text-amber-500 hover:text-amber-700 ml-2 shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
