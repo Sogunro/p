@@ -1,23 +1,24 @@
 """
 Discovery OS - Embedding Service
-FastAPI service for generating text embeddings using sentence-transformers.
+FastAPI service for generating text embeddings using fastembed (ONNX runtime).
 Deployed on Railway, called by the Next.js app for vector search.
 """
 
 import os
 from typing import Optional
 
+import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
+from fastembed import TextEmbedding
 
 load_dotenv()
 
 app = FastAPI(title="Discovery OS Embedding Service", version="1.0.0")
 
-# Load model at startup (all-MiniLM-L6-v2 produces 384-dim vectors)
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Load model at startup (all-MiniLM-L6-v2 produces 384-dim vectors via ONNX)
+model = TextEmbedding("sentence-transformers/all-MiniLM-L6-v2")
 
 API_KEY = os.getenv("EMBEDDING_API_KEY", "")
 
@@ -82,7 +83,12 @@ async def embed(req: EmbedRequest, authorization: Optional[str] = Header(None)):
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    embedding = model.encode(req.text, normalize_embeddings=True)
+    embeddings = list(model.embed([req.text]))
+    embedding = embeddings[0]
+    # Normalize
+    norm = np.linalg.norm(embedding)
+    if norm > 0:
+        embedding = embedding / norm
     return EmbedResponse(
         embedding=embedding.tolist(),
         dimensions=len(embedding),
@@ -104,11 +110,19 @@ async def embed_batch(req: EmbedBatchRequest, authorization: Optional[str] = Hea
     if not texts:
         raise HTTPException(status_code=400, detail="All texts are empty")
 
-    embeddings = model.encode(texts, normalize_embeddings=True)
+    embeddings_list = list(model.embed(texts))
+    # Normalize each
+    result = []
+    for emb in embeddings_list:
+        norm = np.linalg.norm(emb)
+        if norm > 0:
+            emb = emb / norm
+        result.append(emb.tolist())
+
     return EmbedBatchResponse(
-        embeddings=[e.tolist() for e in embeddings],
+        embeddings=result,
         dimensions=384,
-        count=len(embeddings),
+        count=len(result),
     )
 
 
