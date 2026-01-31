@@ -122,37 +122,6 @@ export default async function AnalysisPage({ params }: PageProps) {
   // Get additional fields from database or raw_response
   let sessionDiagnosis: SessionDiagnosis | null = analysis.session_diagnosis as SessionDiagnosis | null
   let evidenceAssessment: EvidenceAssessment | null = analysis.evidence_assessment as EvidenceAssessment | null
-  // Type definitions for additional analysis fields
-  type SessionDiagnosis = {
-    overall_quality?: string
-    evidence_maturity?: string
-    session_nature?: string
-    key_strengths?: string[]
-    key_gaps?: string[]
-    readiness_to_build?: string
-  }
-  type StrategicAlignment = {
-    vision_alignment_score?: number
-    vision_alignment_explanation?: string
-    goals_coverage?: Array<{ goal: string; impact: string; problems_addressed: string[] }>
-    overall_alignment_score?: number
-  }
-  type SolutionAnalysis = {
-    solution: string
-    problem_solved: string
-    recommendation: string
-    budget_fit?: string
-    timeline_fit?: string
-    reasoning?: string
-  }
-  type NextSteps = {
-    build_now?: Array<{ action: string; reason: string }>
-    validate_first?: Array<{ action: string; method: string; questions?: string[] }>
-    defer?: Array<{ item: string; reason: string }>
-  }
-
-  // Prefer database columns, fallback to raw_response parsing for backwards compatibility
-  let sessionDiagnosis: SessionDiagnosis | null = analysis.session_diagnosis as SessionDiagnosis | null
   let strategicAlignment: StrategicAlignment | null = analysis.strategic_alignment as StrategicAlignment | null
   let solutionsAnalysis: SolutionAnalysis[] = (analysis.solutions_analysis as SolutionAnalysis[]) || []
   let nextSteps: NextSteps | null = analysis.next_steps as NextSteps | null
@@ -384,6 +353,8 @@ export default async function AnalysisPage({ params }: PageProps) {
                 <p className="text-gray-500 text-sm">No evidence-backed items</p>
               )}
             </div>
+          </CardContent>
+        </Card>
 
         {/* Assumed Problems (Need Validation) */}
         {assumptions.length > 0 && (
