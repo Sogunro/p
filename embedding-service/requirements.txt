@@ -1,11 +1,11 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
 fastembed==0.7.4
-pydantic==2.10.4
-python-dotenv==1.0.1
-numpy==2.2.1
+pydantic>=2.11.9
+python-dotenv>=1.0.0
+numpy>=2.2.0
 # Phase E: AI Agents
-langgraph==1.0.7
+langgraph>=1.0.0
 langchain>=0.3.0
 langchain-anthropic>=0.3.0
 crewai==1.8.1
