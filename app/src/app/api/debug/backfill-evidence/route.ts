@@ -23,14 +23,14 @@ export async function POST() {
       return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
     }
 
-    // Get all sessions for this workspace
+    // Get all sessions for this user (sessions may have null workspace_id)
     const { data: sessions } = await supabase
       .from('sessions')
       .select('id')
-      .eq('workspace_id', membership.workspace_id)
+      .eq('user_id', user.id)
 
     if (!sessions || sessions.length === 0) {
-      return NextResponse.json({ message: 'No sessions found', backfilled: 0 })
+      return NextResponse.json({ message: 'No sessions found for user', backfilled: 0 })
     }
 
     const sessionIds = sessions.map(s => s.id)
