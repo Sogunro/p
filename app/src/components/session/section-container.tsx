@@ -3,11 +3,20 @@
 import { useState, ReactNode, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import type { Section, StickyNote, Evidence } from '@/types/database'
+import type { Section, StickyNote, Evidence, EvidenceBank, SectionType } from '@/types/database'
+
+const SECTION_TYPE_CONFIG: Record<SectionType, { icon: string; accent: string; label: string }> = {
+  general: { icon: '📋', accent: 'border-gray-300', label: 'General' },
+  problems: { icon: '🔍', accent: 'border-orange-400', label: 'Problems' },
+  solutions: { icon: '💡', accent: 'border-blue-400', label: 'Solutions' },
+  assumptions: { icon: '❓', accent: 'border-yellow-400', label: 'Assumptions' },
+  evidence: { icon: '📎', accent: 'border-green-400', label: 'Evidence' },
+  decisions: { icon: '⚖️', accent: 'border-purple-400', label: 'Decisions' },
+}
 
 interface SectionContainerProps {
   section: Section & {
-    sticky_notes: (StickyNote & { evidence: Evidence[] })[]
+    sticky_notes: (StickyNote & { evidence: Evidence[]; linked_evidence?: EvidenceBank[] })[]
   }
   children: ReactNode
   onUpdateName: (name: string) => void
@@ -15,6 +24,7 @@ interface SectionContainerProps {
   onAddNote: () => void
   onPositionChange: (x: number, y: number) => void
   onSizeChange?: (width: number, height: number) => void
+  onSectionTypeChange?: (type: SectionType) => void
 }
 
 export function SectionContainer({
@@ -25,6 +35,7 @@ export function SectionContainer({
   onAddNote,
   onPositionChange,
   onSizeChange,
+  onSectionTypeChange,
 }: SectionContainerProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [name, setName] = useState(section.name)
@@ -35,7 +46,11 @@ export function SectionContainer({
   const [isResizing, setIsResizing] = useState<'right' | 'bottom' | 'corner' | null>(null)
   const [size, setSize] = useState({ width: section.width || 340, height: section.height || 200 })
   const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 })
+  const [showTypeMenu, setShowTypeMenu] = useState(false)
   const sectionRef = useRef<HTMLDivElement>(null)
+
+  const sectionType = section.section_type || 'general'
+  const typeCfg = SECTION_TYPE_CONFIG[sectionType]
 
   // Calculate dynamic height based on notes (minimum)
   const noteCount = section.sticky_notes.length
@@ -53,6 +68,18 @@ export function SectionContainer({
   const healthScore = notesWithContent.length > 0
     ? Math.round((evidenceCount / notesWithContent.length) * 100)
     : 0
+
+  // Calculate average evidence strength for the section
+  const allLinkedEvidence = section.sticky_notes
+    .flatMap(n => n.linked_evidence || [])
+    .filter(e => e.computed_strength > 0)
+  const avgStrength = allLinkedEvidence.length > 0
+    ? Math.round(allLinkedEvidence.reduce((s, e) => s + e.computed_strength, 0) / allLinkedEvidence.length)
+    : 0
+
+  // Source diversity: count unique source systems across all linked evidence
+  const sourceSystems = new Set(allLinkedEvidence.map(e => e.source_system))
+  const diversityCount = sourceSystems.size
 
   // Determine health color
   const getHealthColor = () => {
@@ -150,7 +177,7 @@ export function SectionContainer({
           ? 'shadow-2xl z-50 border-primary'
           : notesWithContent.length > 0
             ? `${healthColors.border} hover:shadow-xl`
-            : 'border-border hover:border-primary/50'
+            : `${typeCfg.accent} hover:border-primary/50`
       }`}
       style={{
         left: position.x,
@@ -164,11 +191,38 @@ export function SectionContainer({
       {/* Section Header - Draggable Handle */}
       <div className="section-header px-4 py-3 border-b bg-muted/50 rounded-t-xl flex items-center justify-between cursor-move">
         <div className="flex items-center gap-2 flex-1">
-          {/* Drag handle icon */}
-          <div className="text-muted-foreground/50 cursor-move">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" />
-            </svg>
+          {/* Section Type Icon (clickable to change type) */}
+          <div className="relative">
+            <button
+              className="text-sm hover:bg-muted rounded p-0.5 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation()
+                setShowTypeMenu(!showTypeMenu)
+              }}
+              title={`Section type: ${typeCfg.label} (click to change)`}
+            >
+              {typeCfg.icon}
+            </button>
+            {showTypeMenu && (
+              <div className="absolute top-full left-0 mt-1 bg-card border rounded-lg shadow-lg z-50 py-1 w-36">
+                {(Object.entries(SECTION_TYPE_CONFIG) as [SectionType, typeof typeCfg][]).map(([type, cfg]) => (
+                  <button
+                    key={type}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-muted flex items-center gap-2 ${
+                      sectionType === type ? 'bg-primary/10 font-medium' : ''
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onSectionTypeChange?.(type)
+                      setShowTypeMenu(false)
+                    }}
+                  >
+                    <span>{cfg.icon}</span>
+                    <span>{cfg.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {isEditing ? (
@@ -202,19 +256,47 @@ export function SectionContainer({
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Source Diversity Badge */}
+          {diversityCount > 0 && (
+            <div
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                diversityCount >= 3 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+              }`}
+              title={`${diversityCount} source type${diversityCount !== 1 ? 's' : ''}: ${[...sourceSystems].join(', ')}`}
+            >
+              {diversityCount} src
+            </div>
+          )}
+
+          {/* Avg Strength Badge */}
+          {avgStrength > 0 && (
+            <div
+              className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                avgStrength >= 70 ? 'bg-green-100 text-green-700'
+                  : avgStrength >= 40 ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-red-100 text-red-700'
+              }`}
+              title={`Average evidence strength: ${avgStrength}/100`}
+            >
+              {avgStrength}
+            </div>
+          )}
+
           {/* Health Score Badge */}
           {notesWithContent.length > 0 && (
             <div
-              className={`text-xs px-2 py-0.5 rounded-full ${healthColors.bg} ${healthColors.text} font-medium mr-1`}
+              className={`text-xs px-2 py-0.5 rounded-full ${healthColors.bg} ${healthColors.text} font-medium`}
               title={`${healthScore}% evidence-backed (${evidenceCount}/${notesWithContent.length} notes)`}
             >
               {healthScore}%
             </div>
           )}
+
           <span className="text-xs text-muted-foreground mr-1">
             {section.sticky_notes.length} notes
           </span>
-          {/* Collapse/Expand toggle - More visible */}
+
+          {/* Collapse/Expand toggle */}
           <button
             onClick={(e) => {
               e.stopPropagation()

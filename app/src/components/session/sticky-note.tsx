@@ -1,8 +1,13 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { StickyNote as StickyNoteType, Evidence, EvidenceBank } from '@/types/database'
+import type { StickyNote as StickyNoteType, Evidence, EvidenceBank, SectionType } from '@/types/database'
 import { getStrengthBand, getStrengthBandColor } from '@/lib/evidence-strength'
+
+interface ConstraintInfo {
+  label: string
+  value: string | null
+}
 
 interface StickyNoteProps {
   note: StickyNoteType & { evidence: Evidence[]; linked_evidence?: EvidenceBank[] }
@@ -13,6 +18,9 @@ interface StickyNoteProps {
   isLinkMode?: boolean
   isLinkSource?: boolean
   onLinkClick?: () => void
+  constraints?: ConstraintInfo[]
+  sectionType?: SectionType
+  isUnvalidated?: boolean
 }
 
 export function StickyNote({
@@ -24,6 +32,9 @@ export function StickyNote({
   isLinkMode = false,
   isLinkSource = false,
   onLinkClick,
+  constraints = [],
+  sectionType,
+  isUnvalidated = false,
 }: StickyNoteProps) {
   const [isEditing, setIsEditing] = useState(!note.content)
   const [content, setContent] = useState(note.content)
@@ -98,6 +109,17 @@ export function StickyNote({
     }
   }
 
+  // Constraint match check: see if note content mentions any constraint values
+  const constraintMatches = constraints
+    .filter(c => c.value && note.content)
+    .map(c => {
+      const matches = note.content.toLowerCase().includes(c.value!.toLowerCase())
+      return { label: c.label, matches }
+    })
+    .filter(c => c.matches || c.label) // keep all constraints for display
+  const matchCount = constraintMatches.filter(c => c.matches).length
+  const totalConstraints = constraints.filter(c => c.value).length
+
   return (
     <div
       ref={noteRef}
@@ -107,7 +129,9 @@ export function StickyNote({
           : 'bg-yellow-50 border-2 border-yellow-400'
       } ${isDragging ? 'shadow-lg z-50' : 'hover:shadow-lg'} ${
         isLinkMode ? 'cursor-crosshair hover:ring-2 hover:ring-purple-400' : 'cursor-move'
-      } ${isLinkSource ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
+      } ${isLinkSource ? 'ring-2 ring-purple-500 ring-offset-2' : ''}${
+        isUnvalidated ? ' ring-1 ring-orange-400 ring-offset-1' : ''
+      }`}
       style={{
         left: position.x,
         top: position.y,
@@ -125,6 +149,32 @@ export function StickyNote({
       }`}>
         {note.has_evidence ? 'Evidence' : 'Assumption'}
       </div>
+
+      {/* Constraint match indicator (top-right corner) */}
+      {totalConstraints > 0 && note.content.trim() && (
+        <div
+          className={`absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold ${
+            matchCount === totalConstraints
+              ? 'bg-green-500 text-white'
+              : matchCount > 0
+                ? 'bg-yellow-500 text-white'
+                : 'bg-gray-300 text-gray-600'
+          }`}
+          title={`Constraint match: ${matchCount}/${totalConstraints}\n${constraintMatches.map(c => `${c.matches ? '✓' : '✗'} ${c.label}`).join('\n')}`}
+        >
+          {matchCount === totalConstraints ? '✓' : matchCount > 0 ? '~' : '✗'}
+        </div>
+      )}
+
+      {/* Unvalidated warning (top-left corner) */}
+      {isUnvalidated && (
+        <div
+          className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-orange-500 text-white flex items-center justify-center text-[8px] font-bold"
+          title="Solution lacks validated problem — validate the linked problem first"
+        >
+          !
+        </div>
+      )}
 
       {/* Content */}
       <div className="p-2 pt-3 h-full flex flex-col">

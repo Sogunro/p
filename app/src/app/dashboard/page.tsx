@@ -59,6 +59,11 @@ export default async function DashboardPage() {
           <div className="flex justify-between items-center h-16">
             <h1 className="text-xl font-bold text-gray-900">Product Discovery</h1>
             <div className="flex items-center gap-4">
+              <Link href="/decisions">
+                <Button variant="ghost" size="sm">
+                  Decisions
+                </Button>
+              </Link>
               <Link href="/evidence-bank">
                 <Button variant="ghost" size="sm">
                   Evidence Bank

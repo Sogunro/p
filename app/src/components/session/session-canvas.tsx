@@ -19,7 +19,7 @@ import { StickyNote } from './sticky-note'
 import { SectionContainer } from './section-container'
 import { EvidencePopover } from './evidence-popover'
 import { AnalysisResultsModal, AnalysisData } from './analysis-results-modal'
-import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank, SourceSystemExpanded } from '@/types/database'
+import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank, SourceSystemExpanded, SectionType } from '@/types/database'
 
 interface SessionData extends Session {
   templates: { name: string } | null
@@ -65,6 +65,10 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   // Constraint editing
   const [editingConstraint, setEditingConstraint] = useState<string | null>(null)
   const [constraintValue, setConstraintValue] = useState('')
+
+  // Filter/Sort state
+  const [filterBy, setFilterBy] = useState<'all' | 'evidence' | 'assumptions' | SectionType>('all')
+  const [sortBy, setSortBy] = useState<'default' | 'strength' | 'evidence_count'>('default')
 
   // Smart Linking state
   const [isLinkMode, setIsLinkMode] = useState(false)
@@ -213,6 +217,20 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       ...prev,
       sections: prev.sections.map((s) =>
         s.id === sectionId ? { ...s, width, height } : s
+      ),
+    }))
+  }
+
+  const handleSectionTypeChange = async (sectionId: string, sectionType: SectionType) => {
+    await supabase
+      .from('sections')
+      .update({ section_type: sectionType })
+      .eq('id', sectionId)
+
+    setSession((prev) => ({
+      ...prev,
+      sections: prev.sections.map((s) =>
+        s.id === sectionId ? { ...s, section_type: sectionType } : s
       ),
     }))
   }
@@ -825,6 +843,52 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const evidenceCount = allNotes.filter((n) => n.has_evidence).length
   const assumptionCount = allNotes.filter((n) => !n.has_evidence && n.content.trim()).length
 
+  // Prepare constraint data for sticky notes
+  const constraintInfoList = session.session_constraints.map(sc => ({
+    label: sc.constraints.label,
+    value: sc.constraints.value,
+  }))
+
+  // Filter sections
+  const filteredSections = session.sections.filter(section => {
+    if (filterBy === 'all') return true
+    if (filterBy === 'evidence') return section.sticky_notes.some(n => n.has_evidence)
+    if (filterBy === 'assumptions') return section.sticky_notes.some(n => !n.has_evidence && n.content.trim())
+    // Filter by section type
+    return section.section_type === filterBy
+  })
+
+  // Sort sections
+  const sortedSections = [...filteredSections].sort((a, b) => {
+    if (sortBy === 'default') return 0
+
+    const getAvgStrength = (s: typeof a) => {
+      const linked = s.sticky_notes.flatMap(n => n.linked_evidence || []).filter(e => e.computed_strength > 0)
+      return linked.length > 0 ? linked.reduce((sum, e) => sum + e.computed_strength, 0) / linked.length : 0
+    }
+
+    if (sortBy === 'strength') {
+      return getAvgStrength(b) - getAvgStrength(a)
+    }
+    if (sortBy === 'evidence_count') {
+      const aCount = a.sticky_notes.filter(n => n.has_evidence).length
+      const bCount = b.sticky_notes.filter(n => n.has_evidence).length
+      return bCount - aCount
+    }
+    return 0
+  })
+
+  // Compute unvalidated warnings for solutions sections
+  // A solution note is "unvalidated" if it's in a solutions section and the problems section
+  // has notes with <40% average evidence strength
+  const problemSections = session.sections.filter(s => s.section_type === 'problems')
+  const problemsAreWeak = problemSections.length > 0 && problemSections.every(ps => {
+    const linked = ps.sticky_notes.flatMap(n => n.linked_evidence || []).filter(e => e.computed_strength > 0)
+    if (linked.length === 0) return true
+    const avg = linked.reduce((s, e) => s + e.computed_strength, 0) / linked.length
+    return avg < 40
+  })
+
   return (
     <div className="h-screen flex flex-col bg-background">
       {/* Top Toolbar */}
@@ -858,6 +922,31 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           <Button variant="outline" size="sm" onClick={() => setShowConstraints(true)}>
             Constraints
           </Button>
+          {/* Filter dropdown */}
+          <select
+            value={filterBy}
+            onChange={(e) => setFilterBy(e.target.value as typeof filterBy)}
+            className="h-8 text-xs border rounded-md px-2 bg-card"
+            title="Filter sections"
+          >
+            <option value="all">All Sections</option>
+            <option value="evidence">Has Evidence</option>
+            <option value="assumptions">Has Assumptions</option>
+            <option value="problems">Problems</option>
+            <option value="solutions">Solutions</option>
+            <option value="decisions">Decisions</option>
+          </select>
+          {/* Sort dropdown */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="h-8 text-xs border rounded-md px-2 bg-card"
+            title="Sort sections"
+          >
+            <option value="default">Default Order</option>
+            <option value="strength">By Strength</option>
+            <option value="evidence_count">By Evidence Count</option>
+          </select>
           <Button variant="outline" size="sm" onClick={handleAddSection}>
             + Section
           </Button>
@@ -1011,7 +1100,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
             })}
           </svg>
 
-          {session.sections.map((section) => (
+          {sortedSections.map((section) => (
             <SectionContainer
               key={section.id}
               section={section}
@@ -1020,6 +1109,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
               onAddNote={() => handleAddNote(section.id)}
               onPositionChange={(x, y) => handleSectionPositionChange(section.id, x, y)}
               onSizeChange={(w, h) => handleSectionSizeChange(section.id, w, h)}
+              onSectionTypeChange={(type) => handleSectionTypeChange(section.id, type)}
             >
               {section.sticky_notes.map((note) => (
                 <StickyNote
@@ -1032,6 +1122,9 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
                   isLinkMode={isLinkMode}
                   isLinkSource={linkSource === note.id}
                   onLinkClick={() => handleNoteClick(note.id)}
+                  constraints={constraintInfoList}
+                  sectionType={section.section_type}
+                  isUnvalidated={section.section_type === 'solutions' && problemsAreWeak && !note.has_evidence}
                 />
               ))}
             </SectionContainer>

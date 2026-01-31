@@ -222,6 +222,7 @@ export interface Database {
           id: string
           session_id: string
           name: string
+          section_type: SectionType
           order_index: number
           position_x: number
           position_y: number
@@ -234,6 +235,7 @@ export interface Database {
           id?: string
           session_id: string
           name: string
+          section_type?: SectionType
           order_index?: number
           position_x?: number
           position_y?: number
@@ -246,6 +248,7 @@ export interface Database {
           id?: string
           session_id?: string
           name?: string
+          section_type?: SectionType
           order_index?: number
           position_x?: number
           position_y?: number
@@ -801,6 +804,104 @@ export interface Database {
           created_at?: string
         }
       }
+      // Phase B: Decisions
+      decisions: {
+        Row: {
+          id: string
+          workspace_id: string
+          session_id: string | null
+          title: string
+          hypothesis: string | null
+          description: string | null
+          status: DecisionStatus
+          gate_recommendation: DecisionStatus | null
+          evidence_strength: number
+          evidence_count: number
+          success_metrics: Json
+          is_overridden: boolean
+          override_reason: string | null
+          overridden_at: string | null
+          overridden_by: string | null
+          external_ref: string | null
+          external_url: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          session_id?: string | null
+          title: string
+          hypothesis?: string | null
+          description?: string | null
+          status?: DecisionStatus
+          gate_recommendation?: DecisionStatus | null
+          evidence_strength?: number
+          evidence_count?: number
+          success_metrics?: Json
+          is_overridden?: boolean
+          override_reason?: string | null
+          overridden_at?: string | null
+          overridden_by?: string | null
+          external_ref?: string | null
+          external_url?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          session_id?: string | null
+          title?: string
+          hypothesis?: string | null
+          description?: string | null
+          status?: DecisionStatus
+          gate_recommendation?: DecisionStatus | null
+          evidence_strength?: number
+          evidence_count?: number
+          success_metrics?: Json
+          is_overridden?: boolean
+          override_reason?: string | null
+          overridden_at?: string | null
+          overridden_by?: string | null
+          external_ref?: string | null
+          external_url?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      evidence_decision_links: {
+        Row: {
+          id: string
+          decision_id: string
+          evidence_id: string
+          segment_match_factor: number
+          relevance_note: string | null
+          linked_by: string | null
+          linked_at: string
+        }
+        Insert: {
+          id?: string
+          decision_id: string
+          evidence_id: string
+          segment_match_factor?: number
+          relevance_note?: string | null
+          linked_by?: string | null
+          linked_at?: string
+        }
+        Update: {
+          id?: string
+          decision_id?: string
+          evidence_id?: string
+          segment_match_factor?: number
+          relevance_note?: string | null
+          linked_by?: string | null
+          linked_at?: string
+        }
+      }
       // Phase A: Confidence History
       confidence_history: {
         Row: {
@@ -874,6 +975,12 @@ export type WorkspaceSettings = Database['public']['Tables']['workspace_settings
 export type SourceSystem = 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
 export type SourceSystemExpanded = SourceSystem | 'intercom' | 'gong' | 'interview' | 'support' | 'analytics' | 'social'
 export type EvidenceStrength = 'high' | 'medium' | 'low'
+
+// Phase B: Decision types
+export type SectionType = 'general' | 'problems' | 'solutions' | 'assumptions' | 'evidence' | 'decisions'
+export type DecisionStatus = 'commit' | 'validate' | 'park'
+export type Decision = Database['public']['Tables']['decisions']['Row']
+export type EvidenceDecisionLink = Database['public']['Tables']['evidence_decision_links']['Row']
 
 // Phase A: Evidence Strength types
 export type WeightTemplate = 'default' | 'b2b_enterprise' | 'plg_growth' | 'support_led' | 'research_heavy'
