@@ -7,9 +7,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { StickyNote, Evidence, EvidenceBank } from '@/types/database'
-
-type SourceSystem = 'manual' | 'slack' | 'notion' | 'airtable'
+import type { StickyNote, Evidence, EvidenceBank, SourceSystemExpanded } from '@/types/database'
+import { getStrengthBand, getStrengthBandColor } from '@/lib/evidence-strength'
 
 interface EvidencePopoverProps {
   noteId: string
@@ -22,7 +21,7 @@ interface EvidencePopoverProps {
     content?: string
     title?: string
     strength?: 'high' | 'medium' | 'low'
-    source_system?: SourceSystem
+    source_system?: SourceSystemExpanded
   }) => void
   onRemoveEvidence: (evidenceId: string) => void
   onLinkEvidence?: (evidenceBankId: string) => void
@@ -41,6 +40,12 @@ const SOURCE_ICONS: Record<string, string> = {
   notion: '📝',
   mixpanel: '📊',
   airtable: '📋',
+  intercom: '💬',
+  gong: '🎙️',
+  interview: '🎤',
+  support: '🎫',
+  analytics: '📈',
+  social: '🌐',
 }
 
 export function EvidencePopover({
@@ -58,7 +63,7 @@ export function EvidencePopover({
   const [text, setText] = useState('')
   const [title, setTitle] = useState('')
   const [strength, setStrength] = useState<'high' | 'medium' | 'low'>('medium')
-  const [source, setSource] = useState<SourceSystem>('manual')
+  const [source, setSource] = useState<SourceSystemExpanded>('manual')
   const [bankEvidence, setBankEvidence] = useState<EvidenceBank[]>([])
   const [bankLoading, setBankLoading] = useState(false)
   const [bankSearch, setBankSearch] = useState('')
@@ -322,13 +327,25 @@ export function EvidencePopover({
                           }}
                         >
                           <div className="flex items-center gap-1 mb-1">
-                            <span>{SOURCE_ICONS[item.source_system]}</span>
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] px-1 py-0 ${strengthLabels[item.strength].color}`}
-                            >
-                              {item.strength}
-                            </Badge>
+                            <span>{SOURCE_ICONS[item.source_system] || '📎'}</span>
+                            {item.computed_strength > 0 ? (
+                              <span
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                style={{
+                                  color: getStrengthBandColor(getStrengthBand(item.computed_strength)),
+                                  backgroundColor: `${getStrengthBandColor(getStrengthBand(item.computed_strength))}15`,
+                                }}
+                              >
+                                {Math.round(item.computed_strength)}
+                              </span>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] px-1 py-0 ${strengthLabels[item.strength].color}`}
+                              >
+                                {item.strength}
+                              </Badge>
+                            )}
                             {isLinked && (
                               <Badge className="text-[10px] px-1 py-0 bg-green-600">Linked</Badge>
                             )}

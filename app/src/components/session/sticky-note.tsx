@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { StickyNote as StickyNoteType, Evidence } from '@/types/database'
+import type { StickyNote as StickyNoteType, Evidence, EvidenceBank } from '@/types/database'
+import { getStrengthBand, getStrengthBandColor } from '@/lib/evidence-strength'
 
 interface StickyNoteProps {
-  note: StickyNoteType & { evidence: Evidence[] }
+  note: StickyNoteType & { evidence: Evidence[]; linked_evidence?: EvidenceBank[] }
   onUpdate: (content: string) => void
   onDelete: () => void
   onOpenEvidence: (rect: DOMRect) => void
@@ -151,20 +152,42 @@ export function StickyNote({
         {/* Bottom toolbar */}
         <div className="flex justify-between items-center mt-auto pt-1">
           {/* Evidence indicator/button */}
-          <button
-            onClick={handleEvidenceClick}
-            className={`text-xs flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
-              note.has_evidence
-                ? 'text-green-700 bg-green-200 hover:bg-green-300'
-                : 'text-gray-500 hover:bg-gray-200'
-            }`}
-            title={note.has_evidence ? `${note.evidence.length} evidence` : 'Add evidence'}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-            </svg>
-            {note.has_evidence && <span>{note.evidence.length}</span>}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleEvidenceClick}
+              className={`text-xs flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+                note.has_evidence
+                  ? 'text-green-700 bg-green-200 hover:bg-green-300'
+                  : 'text-gray-500 hover:bg-gray-200'
+              }`}
+              title={note.has_evidence ? `${note.evidence.length} evidence` : 'Add evidence'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              {note.has_evidence && <span>{note.evidence.length}</span>}
+            </button>
+            {/* Computed strength score */}
+            {(() => {
+              const linked = note.linked_evidence || []
+              const withStrength = linked.filter(e => e.computed_strength > 0)
+              if (withStrength.length === 0) return null
+              const avg = Math.round(withStrength.reduce((s, e) => s + e.computed_strength, 0) / withStrength.length)
+              const band = getStrengthBand(avg)
+              return (
+                <span
+                  className="text-[9px] font-bold px-1 py-0.5 rounded"
+                  style={{
+                    color: getStrengthBandColor(band),
+                    backgroundColor: `${getStrengthBandColor(band)}20`,
+                  }}
+                  title={`Evidence strength: ${avg}/100`}
+                >
+                  {avg}
+                </span>
+              )
+            })()}
+          </div>
 
           {/* Delete button */}
           <button

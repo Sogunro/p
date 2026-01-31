@@ -74,6 +74,11 @@ export default async function DashboardPage() {
                   Team
                 </Button>
               </Link>
+              <Link href="/settings/evidence-weights">
+                <Button variant="ghost" size="sm">
+                  Weights
+                </Button>
+              </Link>
               <Link href="/settings/constraints">
                 <Button variant="ghost" size="sm">
                   Settings

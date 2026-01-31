@@ -436,12 +436,19 @@ export interface Database {
           url: string | null
           content: string | null
           strength: 'high' | 'medium' | 'low'
-          source_system: 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          source_system: SourceSystemExpanded
           source_metadata: Json
           tags: string[]
           created_by: string | null
           created_at: string
           updated_at: string
+          // Phase A: Evidence Strength columns
+          source_weight: number
+          recency_factor: number
+          sentiment: 'positive' | 'negative' | 'neutral' | null
+          segment: string | null
+          computed_strength: number
+          source_timestamp: string | null
         }
         Insert: {
           id?: string
@@ -451,12 +458,19 @@ export interface Database {
           url?: string | null
           content?: string | null
           strength?: 'high' | 'medium' | 'low'
-          source_system?: 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          source_system?: SourceSystemExpanded
           source_metadata?: Json
           tags?: string[]
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          // Phase A: Evidence Strength columns
+          source_weight?: number
+          recency_factor?: number
+          sentiment?: 'positive' | 'negative' | 'neutral' | null
+          segment?: string | null
+          computed_strength?: number
+          source_timestamp?: string | null
         }
         Update: {
           id?: string
@@ -466,12 +480,19 @@ export interface Database {
           url?: string | null
           content?: string | null
           strength?: 'high' | 'medium' | 'low'
-          source_system?: 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+          source_system?: SourceSystemExpanded
           source_metadata?: Json
           tags?: string[]
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          // Phase A: Evidence Strength columns
+          source_weight?: number
+          recency_factor?: number
+          sentiment?: 'positive' | 'negative' | 'neutral' | null
+          segment?: string | null
+          computed_strength?: number
+          source_timestamp?: string | null
         }
       }
       sticky_note_evidence_links: {
@@ -588,6 +609,11 @@ export interface Database {
           airtable_webhook_url: string | null
           last_fetch_at: string | null
           updated_at: string
+          // Phase A: Evidence Strength configuration
+          weight_config: Json
+          weight_template: WeightTemplate
+          recency_config: Json
+          target_segments: string[]
         }
         Insert: {
           id?: string
@@ -605,6 +631,11 @@ export interface Database {
           airtable_webhook_url?: string | null
           last_fetch_at?: string | null
           updated_at?: string
+          // Phase A: Evidence Strength configuration
+          weight_config?: Json
+          weight_template?: WeightTemplate
+          recency_config?: Json
+          target_segments?: string[]
         }
         Update: {
           id?: string
@@ -622,6 +653,11 @@ export interface Database {
           airtable_webhook_url?: string | null
           last_fetch_at?: string | null
           updated_at?: string
+          // Phase A: Evidence Strength configuration
+          weight_config?: Json
+          weight_template?: WeightTemplate
+          recency_config?: Json
+          target_segments?: string[]
         }
       }
       // Phase 4: Daily Insights Analysis
@@ -765,6 +801,48 @@ export interface Database {
           created_at?: string
         }
       }
+      // Phase A: Confidence History
+      confidence_history: {
+        Row: {
+          id: string
+          workspace_id: string
+          entity_type: 'evidence_bank' | 'sticky_note' | 'decision' | 'hypothesis'
+          entity_id: string
+          score: number
+          previous_score: number | null
+          delta: number | null
+          trigger_type: ConfidenceTriggerType | null
+          trigger_evidence_id: string | null
+          factors: Json
+          recorded_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          entity_type: 'evidence_bank' | 'sticky_note' | 'decision' | 'hypothesis'
+          entity_id: string
+          score: number
+          previous_score?: number | null
+          delta?: number | null
+          trigger_type?: ConfidenceTriggerType | null
+          trigger_evidence_id?: string | null
+          factors?: Json
+          recorded_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          entity_type?: 'evidence_bank' | 'sticky_note' | 'decision' | 'hypothesis'
+          entity_id?: string
+          score?: number
+          previous_score?: number | null
+          delta?: number | null
+          trigger_type?: ConfidenceTriggerType | null
+          trigger_evidence_id?: string | null
+          factors?: Json
+          recorded_at?: string
+        }
+      }
     }
   }
 }
@@ -792,9 +870,16 @@ export type StickyNoteEvidenceLink = Database['public']['Tables']['sticky_note_e
 export type InsightsFeed = Database['public']['Tables']['insights_feed']['Row']
 export type WorkspaceSettings = Database['public']['Tables']['workspace_settings']['Row']
 
-// Source system type for reuse
+// Source system types
 export type SourceSystem = 'manual' | 'slack' | 'notion' | 'mixpanel' | 'airtable'
+export type SourceSystemExpanded = SourceSystem | 'intercom' | 'gong' | 'interview' | 'support' | 'analytics' | 'social'
 export type EvidenceStrength = 'high' | 'medium' | 'low'
+
+// Phase A: Evidence Strength types
+export type WeightTemplate = 'default' | 'b2b_enterprise' | 'plg_growth' | 'support_led' | 'research_heavy'
+export type ConfidenceTriggerType = 'evidence_linked' | 'evidence_removed' | 'recency_decay' | 'weight_change' | 'manual_override' | 'recalculation'
+export type Sentiment = 'positive' | 'negative' | 'neutral'
+export type ConfidenceHistory = Database['public']['Tables']['confidence_history']['Row']
 
 // Phase 3: Team Collaboration types
 export type WorkspaceInvite = Database['public']['Tables']['workspace_invites']['Row']
@@ -854,4 +939,52 @@ export interface ParsedDailyAnalysis {
   priorities: InsightPriority[]
   cross_source_connections: CrossSourceConnection[]
   action_items: ActionItem[]
+}
+
+// Phase A: Evidence Strength interfaces
+export interface WeightConfig {
+  [sourceType: string]: number
+}
+
+export interface RecencyRange {
+  max_days: number
+  factor: number
+}
+
+export interface RecencyConfig {
+  ranges: RecencyRange[]
+}
+
+export interface EvidenceStrengthResult {
+  computed_strength: number
+  band: 'weak' | 'moderate' | 'strong'
+  source_weight: number
+  recency_factor: number
+  segment_match: number
+  corroboration_bonus: number
+  factors: EvidenceStrengthFactors
+}
+
+export interface EvidenceStrengthFactors {
+  base_weight: number
+  recency: number
+  segment_match: number
+  corroboration: number
+  quality_gates: QualityGateResult
+}
+
+export interface QualityGateResult {
+  source_diversity: { passed: boolean; unique_sources: number; total: number; cap_applied: boolean }
+  direct_voice: { passed: boolean; has_direct: boolean }
+  independence: { passed: boolean; independent_count: number }
+  recency_floor: { passed: boolean; recent_percentage: number }
+}
+
+export interface CoverageIndicators {
+  source_count: number
+  unique_sources: string[]
+  segment_coverage: string[]
+  recency_distribution: { recent: number; moderate: number; old: number; stale: number }
+  has_direct_voice: boolean
+  gaps: string[]
 }

@@ -19,14 +19,20 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
-import type { EvidenceBank, SourceSystem, EvidenceStrength, InsightsFeed } from '@/types/database'
+import type { EvidenceBank, SourceSystem, SourceSystemExpanded, EvidenceStrength, InsightsFeed } from '@/types/database'
 
-const SOURCE_ICONS: Record<SourceSystem, string> = {
+const SOURCE_ICONS: Record<SourceSystemExpanded, string> = {
   manual: '✏️',
   slack: '💬',
   notion: '📝',
   mixpanel: '📊',
   airtable: '📋',
+  intercom: '💬',
+  gong: '🎙️',
+  interview: '🎤',
+  support: '🎫',
+  analytics: '📈',
+  social: '🌐',
 }
 
 const STRENGTH_COLORS: Record<EvidenceStrength, string> = {

@@ -19,9 +19,7 @@ import { StickyNote } from './sticky-note'
 import { SectionContainer } from './section-container'
 import { EvidencePopover } from './evidence-popover'
 import { AnalysisResultsModal, AnalysisData } from './analysis-results-modal'
-import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank } from '@/types/database'
-
-type SourceSystem = 'manual' | 'slack' | 'notion' | 'airtable'
+import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank, SourceSystemExpanded } from '@/types/database'
 
 interface SessionData extends Session {
   templates: { name: string } | null
@@ -311,7 +309,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
     content?: string
     title?: string
     strength?: 'high' | 'medium' | 'low'
-    source_system?: SourceSystem
+    source_system?: SourceSystemExpanded
   }) => {
     // 1. Save to Evidence Bank first
     let bankItem: EvidenceBank | null = null
