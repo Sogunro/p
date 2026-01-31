@@ -15,7 +15,7 @@ interface AnalysisData {
   objectiveScore: number
   summary: string
   assumptions: { content: string; section: string; confidence?: number; validation_strategy?: string }[]
-  evidenceBacked: { content: string; section: string; evidence_summary?: string; confidence?: number; confidence_tier?: string }[]
+  evidenceBacked: { content: string; section: string; evidence_summary: string; confidence?: number; confidence_tier?: string }[]
   validationRecommendations: {
     item: string
     confidence: string

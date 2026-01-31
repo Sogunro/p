@@ -122,17 +122,47 @@ export default async function AnalysisPage({ params }: PageProps) {
   // Get additional fields from database or raw_response
   let sessionDiagnosis: SessionDiagnosis | null = analysis.session_diagnosis as SessionDiagnosis | null
   let evidenceAssessment: EvidenceAssessment | null = analysis.evidence_assessment as EvidenceAssessment | null
+  // Type definitions for additional analysis fields
+  type SessionDiagnosis = {
+    overall_quality?: string
+    evidence_maturity?: string
+    session_nature?: string
+    key_strengths?: string[]
+    key_gaps?: string[]
+    readiness_to_build?: string
+  }
+  type StrategicAlignment = {
+    vision_alignment_score?: number
+    vision_alignment_explanation?: string
+    goals_coverage?: Array<{ goal: string; impact: string; problems_addressed: string[] }>
+    overall_alignment_score?: number
+  }
+  type SolutionAnalysis = {
+    solution: string
+    problem_solved: string
+    recommendation: string
+    budget_fit?: string
+    timeline_fit?: string
+    reasoning?: string
+  }
+  type NextSteps = {
+    build_now?: Array<{ action: string; reason: string }>
+    validate_first?: Array<{ action: string; method: string; questions?: string[] }>
+    defer?: Array<{ item: string; reason: string }>
+  }
+
+  // Prefer database columns, fallback to raw_response parsing for backwards compatibility
+  let sessionDiagnosis: SessionDiagnosis | null = analysis.session_diagnosis as SessionDiagnosis | null
   let strategicAlignment: StrategicAlignment | null = analysis.strategic_alignment as StrategicAlignment | null
   let solutionsAnalysis: SolutionAnalysis[] = (analysis.solutions_analysis as SolutionAnalysis[]) || []
   let nextSteps: NextSteps | null = analysis.next_steps as NextSteps | null
 
-  // Fallback: Parse from raw_response if database columns are empty
+  // Fallback: Parse from raw_response if database columns are empty (for older analyses)
   const rawResponse = analysis.raw_response as { content?: Array<{ text?: string }> } | null
   if (!sessionDiagnosis && rawResponse?.content?.[0]?.text) {
     try {
       const parsed = JSON.parse(rawResponse.content[0].text)
       sessionDiagnosis = parsed.session_diagnosis || null
-      evidenceAssessment = evidenceAssessment || parsed.evidence_assessment || null
       strategicAlignment = strategicAlignment || parsed.strategic_alignment || null
       solutionsAnalysis = solutionsAnalysis.length > 0 ? solutionsAnalysis : (parsed.solutions_analysis || [])
       nextSteps = nextSteps || parsed.next_steps || null
@@ -326,6 +356,34 @@ export default async function AnalysisPage({ params }: PageProps) {
             </CardContent>
           </Card>
         )}
+
+        {/* Assumption Mapping */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Assumption Mapping</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Evidence-Backed */}
+            <div>
+              <h3 className="font-medium text-green-700 mb-2">
+                🟢 Evidence-Backed ({evidenceBacked.length})
+              </h3>
+              {evidenceBacked.length > 0 ? (
+                <ul className="space-y-2">
+                  {evidenceBacked.map((item, i) => (
+                    <li key={i} className="bg-green-50 p-3 rounded-md">
+                      <p className="font-medium">{item.content}</p>
+                      <p className="text-sm text-gray-600">
+                        <span className="text-gray-400">{item.section}</span>
+                        {item.evidence_summary && ` — ${item.evidence_summary}`}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-500 text-sm">No evidence-backed items</p>
+              )}
+            </div>
 
         {/* Assumed Problems (Need Validation) */}
         {assumptions.length > 0 && (

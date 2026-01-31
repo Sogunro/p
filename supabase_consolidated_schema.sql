@@ -467,7 +467,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 
--- User-based policies (own sessions)
+-- User-based policies (original)
 DROP POLICY IF EXISTS "Users can view own sessions" ON sessions;
 CREATE POLICY "Users can view own sessions" ON sessions
     FOR SELECT USING (auth.uid() = user_id);
@@ -772,6 +772,7 @@ ALTER TABLE evidence_bank ENABLE ROW LEVEL SECURITY;
 
 -- Workspace-based policies only (no user-based to avoid conflicts)
 DROP POLICY IF EXISTS "Users can manage own evidence bank" ON evidence_bank;
+-- Workspace-based policies (preferred for team collaboration)
 DROP POLICY IF EXISTS "Users can view evidence in their workspaces" ON evidence_bank;
 CREATE POLICY "Users can view evidence in their workspaces" ON evidence_bank
     FOR SELECT USING (
@@ -809,6 +810,9 @@ CREATE TRIGGER update_evidence_bank_updated_at
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 COMMENT ON TABLE evidence_bank IS 'Reusable evidence items shared across a workspace';
+COMMENT ON COLUMN evidence_bank.fetched_content IS 'Actual content fetched from the URL by n8n';
+COMMENT ON COLUMN evidence_bank.fetch_status IS 'Status of content fetch: unfetched, fetched, failed';
+COMMENT ON COLUMN evidence_bank.fetch_metadata IS 'Metadata from fetch (author, last_edited, etc.)';
 
 
 -- --------------------------------------------
@@ -847,6 +851,10 @@ CREATE POLICY "Users can manage own evidence" ON evidence
 
 CREATE INDEX IF NOT EXISTS idx_evidence_sticky_note_id ON evidence(sticky_note_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_fetch_status ON evidence(fetch_status);
+
+COMMENT ON COLUMN evidence.strength IS 'Evidence strength: high (interviews, analytics), medium (surveys, tickets), low (anecdotal)';
+COMMENT ON COLUMN evidence.fetched_content IS 'Actual content fetched from the URL by n8n';
+COMMENT ON COLUMN evidence.fetch_status IS 'Status of content fetch: unfetched, fetched, failed';
 
 -- Trigger to update has_evidence on sticky_notes
 CREATE OR REPLACE FUNCTION update_has_evidence()
@@ -890,6 +898,7 @@ DROP POLICY IF EXISTS "Users can insert their sticky note evidence links" ON sti
 DROP POLICY IF EXISTS "Users can delete their sticky note evidence links" ON sticky_note_evidence_links;
 DROP POLICY IF EXISTS "Users can view their sticky note evidence links" ON sticky_note_evidence_links;
 
+-- Single set of policies (removed duplicates)
 DROP POLICY IF EXISTS "Users can view links for notes in their sessions" ON sticky_note_evidence_links;
 CREATE POLICY "Users can view links for notes in their sessions" ON sticky_note_evidence_links
     FOR SELECT USING (
@@ -1058,14 +1067,13 @@ COMMENT ON TABLE insights_feed IS 'Daily fetched insights from external tools vi
 -- ============================================
 
 -- --------------------------------------------
--- 9.1 SESSION_ANALYSES (AI analysis results)
+-- 9.1 SESSION_ANALYSES
 -- --------------------------------------------
 CREATE TABLE IF NOT EXISTS session_analyses (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     objective_score INTEGER CHECK (objective_score >= 0 AND objective_score <= 100),
     summary TEXT,
-    -- Core analysis fields
     assumptions JSONB,
     evidence_backed JSONB,
     validation_recommendations JSONB,
