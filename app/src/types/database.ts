@@ -452,6 +452,8 @@ export interface Database {
           segment: string | null
           computed_strength: number
           source_timestamp: string | null
+          // Phase D: Vector Search
+          embedding: number[] | null
         }
         Insert: {
           id?: string
@@ -474,6 +476,8 @@ export interface Database {
           segment?: string | null
           computed_strength?: number
           source_timestamp?: string | null
+          // Phase D: Vector Search
+          embedding?: number[] | null
         }
         Update: {
           id?: string
@@ -496,6 +500,8 @@ export interface Database {
           segment?: string | null
           computed_strength?: number
           source_timestamp?: string | null
+          // Phase D: Vector Search
+          embedding?: number[] | null
         }
       }
       sticky_note_evidence_links: {
@@ -981,6 +987,22 @@ export type SectionType = 'general' | 'problems' | 'solutions' | 'assumptions' |
 export type DecisionStatus = 'commit' | 'validate' | 'park'
 export type Decision = Database['public']['Tables']['decisions']['Row']
 export type EvidenceDecisionLink = Database['public']['Tables']['evidence_decision_links']['Row']
+
+// Phase D: Vector Search types
+export interface VectorSearchResult {
+  id: string
+  title: string
+  content: string | null
+  url: string | null
+  type: string
+  source_system: string
+  strength: string
+  computed_strength: number
+  segment: string | null
+  source_timestamp: string | null
+  created_at: string
+  similarity: number
+}
 
 // Phase A: Evidence Strength types
 export type WeightTemplate = 'default' | 'b2b_enterprise' | 'plg_growth' | 'support_led' | 'research_heavy'

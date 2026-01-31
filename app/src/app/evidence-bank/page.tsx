@@ -19,7 +19,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
-import type { EvidenceBank, SourceSystem, SourceSystemExpanded, EvidenceStrength, InsightsFeed } from '@/types/database'
+import type { EvidenceBank, SourceSystem, SourceSystemExpanded, EvidenceStrength, InsightsFeed, VectorSearchResult } from '@/types/database'
 
 const SOURCE_ICONS: Record<SourceSystemExpanded, string> = {
   manual: '✏️',
@@ -74,6 +74,14 @@ export default function EvidenceBankPage() {
     manualSetup?: boolean
     payload?: Record<string, unknown>
   } | null>(null)
+
+  // Semantic search state
+  const [semanticQuery, setSemanticQuery] = useState('')
+  const [semanticResults, setSemanticResults] = useState<VectorSearchResult[]>([])
+  const [semanticLoading, setSemanticLoading] = useState(false)
+  const [isSemanticMode, setIsSemanticMode] = useState(false)
+  const [embedLoading, setEmbedLoading] = useState(false)
+  const [embedStatus, setEmbedStatus] = useState('')
 
   // Pending insights (not yet added to evidence bank)
   const [pendingInsights, setPendingInsights] = useState<InsightsFeed[]>([])
@@ -271,6 +279,57 @@ export default function EvidenceBankPage() {
     }
   }
 
+  const handleSemanticSearch = async () => {
+    if (!semanticQuery.trim()) return
+    setSemanticLoading(true)
+    setIsSemanticMode(true)
+    try {
+      const response = await fetch('/api/evidence-bank/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: semanticQuery, limit: 20 }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSemanticResults(data.results || [])
+      }
+    } catch (error) {
+      console.error('Semantic search failed:', error)
+    } finally {
+      setSemanticLoading(false)
+    }
+  }
+
+  const clearSemanticSearch = () => {
+    setSemanticQuery('')
+    setSemanticResults([])
+    setIsSemanticMode(false)
+  }
+
+  const handleEmbedAll = async () => {
+    setEmbedLoading(true)
+    setEmbedStatus('')
+    try {
+      const response = await fetch('/api/evidence-bank/embed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ embedAll: true }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setEmbedStatus(data.message)
+      } else {
+        const data = await response.json()
+        setEmbedStatus(data.error || 'Embedding failed')
+      }
+    } catch (error) {
+      console.error('Embed all failed:', error)
+      setEmbedStatus('Embedding unavailable')
+    } finally {
+      setEmbedLoading(false)
+    }
+  }
+
   const toggleFetchSource = (source: SourceSystem) => {
     setSelectedFetchSources((prev) =>
       prev.includes(source)
@@ -319,6 +378,25 @@ export default function EvidenceBankPage() {
               <Link href="/insights">
                 <Button variant="outline">View Insights Feed</Button>
               </Link>
+              <Button
+                variant="outline"
+                onClick={handleEmbedAll}
+                disabled={embedLoading}
+                className="flex items-center gap-2"
+                title="Generate embeddings for all evidence without them"
+              >
+                {embedLoading ? (
+                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                )}
+                Embed All
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => setShowFetchDialog(true)}
@@ -380,37 +458,94 @@ export default function EvidenceBankPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Embed status notification */}
+        {embedStatus && (
+          <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center justify-between">
+            <span>{embedStatus}</span>
+            <button onClick={() => setEmbedStatus('')} className="text-blue-500 hover:text-blue-700 ml-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="mb-6 flex flex-wrap gap-4">
           <div className="flex-1 min-w-[200px]">
-            <Input
-              placeholder="Search evidence..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            {isSemanticMode ? (
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    placeholder="Semantic search (by meaning)..."
+                    value={semanticQuery}
+                    onChange={(e) => setSemanticQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSemanticSearch()
+                    }}
+                    className="pr-8"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-purple-500 text-xs font-medium">AI</span>
+                </div>
+                <Button size="sm" onClick={handleSemanticSearch} disabled={semanticLoading || !semanticQuery.trim()}>
+                  {semanticLoading ? 'Searching...' : 'Search'}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={clearSemanticSearch}>
+                  Clear
+                </Button>
+              </div>
+            ) : (
+              <Input
+                placeholder="Search evidence..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            )}
           </div>
-          <select
-            className="border rounded-md px-3 py-2 text-sm"
-            value={filterSource}
-            onChange={(e) => setFilterSource(e.target.value as SourceSystem | 'all')}
+          <Button
+            variant={isSemanticMode ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              if (isSemanticMode) {
+                clearSemanticSearch()
+              } else {
+                setIsSemanticMode(true)
+              }
+            }}
+            className="flex items-center gap-1"
+            title="Toggle smart semantic search (requires embeddings)"
           >
-            <option value="all">📚 All Sources</option>
-            <option value="manual">✏️ Manual</option>
-            <option value="slack">💬 Slack</option>
-            <option value="notion">📝 Notion</option>
-            <option value="mixpanel">📊 Mixpanel</option>
-            <option value="airtable">📋 Airtable</option>
-          </select>
-          <select
-            className="border rounded-md px-3 py-2 text-sm"
-            value={filterStrength}
-            onChange={(e) => setFilterStrength(e.target.value as EvidenceStrength | 'all')}
-          >
-            <option value="all">All Strengths</option>
-            <option value="high">🟢 High</option>
-            <option value="medium">🟡 Medium</option>
-            <option value="low">🔴 Low</option>
-          </select>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            Smart Search
+          </Button>
+          {!isSemanticMode && (
+            <>
+              <select
+                className="border rounded-md px-3 py-2 text-sm"
+                value={filterSource}
+                onChange={(e) => setFilterSource(e.target.value as SourceSystem | 'all')}
+              >
+                <option value="all">📚 All Sources</option>
+                <option value="manual">✏️ Manual</option>
+                <option value="slack">💬 Slack</option>
+                <option value="notion">📝 Notion</option>
+                <option value="mixpanel">📊 Mixpanel</option>
+                <option value="airtable">📋 Airtable</option>
+              </select>
+              <select
+                className="border rounded-md px-3 py-2 text-sm"
+                value={filterStrength}
+                onChange={(e) => setFilterStrength(e.target.value as EvidenceStrength | 'all')}
+              >
+                <option value="all">All Strengths</option>
+                <option value="high">🟢 High</option>
+                <option value="medium">🟡 Medium</option>
+                <option value="low">🔴 Low</option>
+              </select>
+            </>
+          )}
         </div>
 
         {/* Stats */}
@@ -574,7 +709,62 @@ export default function EvidenceBankPage() {
         )}
 
         {/* Evidence List */}
-        {filteredEvidence.length > 0 ? (
+        {isSemanticMode && semanticResults.length > 0 ? (
+          <div className="grid gap-4">
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+              <span>{semanticResults.length} semantic matches for &quot;{semanticQuery}&quot;</span>
+            </div>
+            {semanticResults.map((item) => (
+              <Card key={item.id} className="hover:shadow-md transition-shadow border-purple-100">
+                <CardContent className="py-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-lg">{SOURCE_ICONS[item.source_system as SourceSystemExpanded] || '📎'}</span>
+                        <h3 className="font-medium">{item.title}</h3>
+                        <Badge className={STRENGTH_COLORS[item.strength as EvidenceStrength] || 'bg-gray-100 text-gray-600'}>
+                          {item.strength}
+                        </Badge>
+                        <Badge variant="outline" className="text-purple-600 border-purple-300 bg-purple-50 text-xs">
+                          {Math.round(item.similarity * 100)}% match
+                        </Badge>
+                      </div>
+                      {item.content && (
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">{item.content}</p>
+                      )}
+                      {item.url && (
+                        <a
+                          href={item.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline"
+                        >
+                          {item.url}
+                        </a>
+                      )}
+                      <p className="text-xs text-gray-400 mt-2">
+                        Added {formatDate(item.created_at)} via {item.source_system}
+                        {item.computed_strength > 0 && ` | Strength: ${Math.round(item.computed_strength)}/100`}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : isSemanticMode && semanticQuery && !semanticLoading ? (
+          <Card className="text-center py-12">
+            <CardContent>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No semantic matches found</h3>
+              <p className="text-gray-500 mb-4">
+                Try a different search query, or make sure evidence has been embedded (click &quot;Embed All&quot;).
+              </p>
+            </CardContent>
+          </Card>
+        ) : !isSemanticMode && filteredEvidence.length > 0 ? (
           <div className="grid gap-4">
             {filteredEvidence.map((item) => (
               <Card key={item.id} className="hover:shadow-md transition-shadow">
@@ -623,7 +813,7 @@ export default function EvidenceBankPage() {
               </Card>
             ))}
           </div>
-        ) : (
+        ) : !isSemanticMode ? (
           <Card className="text-center py-12">
             <CardContent>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No evidence found</h3>
@@ -635,7 +825,7 @@ export default function EvidenceBankPage() {
               <Button onClick={() => setShowAddDialog(true)}>+ Add Evidence</Button>
             </CardContent>
           </Card>
-        )}
+        ) : null}
       </main>
 
       {/* Add Evidence Dialog */}

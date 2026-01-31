@@ -1,8 +1,8 @@
 # Discovery OS — Development Plan
 
-**Last updated:** 2026-01-31 (Phase C complete)
-**Spec coverage:** ~55% built → targeting 100% across 8 phases
-**Current DB tables:** 27 | **API routes:** 27 | **Pages:** 19
+**Last updated:** 2026-01-31 (Phase D complete)
+**Spec coverage:** ~62% built → targeting 100% across 8 phases
+**Current DB tables:** 27 | **API routes:** 29 | **Pages:** 19
 
 ---
 
@@ -13,8 +13,8 @@
 | A | Evidence Strength Foundation | COMPLETE | Calculation engine, weight config, templates, UI |
 | B | Decision Records MVP | COMPLETE | Decisions table, CRUD, log page, detail page, executive brief, gate logic, override mechanic |
 | C | Enhanced Canvas | COMPLETE | Section types, sort/filter, constraint indicators, source diversity, unvalidated warnings |
-| D | Vector Search + Enrichment | UP NEXT | pgvector, embeddings, similarity search, Python service |
-| E | AI Agents | PLANNED | Evidence Hunter, Decay Monitor, Contradiction Detector, Competitor Monitor |
+| D | Vector Search + Enrichment | COMPLETE | pgvector, embeddings, similarity search, Python service, smart search UI |
+| E | AI Agents | UP NEXT | Evidence Hunter, Decay Monitor, Contradiction Detector, Competitor Monitor |
 | F | Discovery Brief + External Push | PLANNED | Brief generation, Linear/Jira integration |
 | G | Outcomes + Calibration | PLANNED | Outcomes tracking, calibration dashboard |
 | H | Polish + Portfolio | PLANNED | Demo data, loading states, architecture docs |
@@ -301,34 +301,63 @@ The spec defines 4 AI agents that automate the grunt work so PMs can focus on ju
 
 ---
 
-## Phase D: Vector Search + Enrichment + Python Service — UP NEXT
+## Phase D: Vector Search + Enrichment + Python Service — COMPLETE
 
 **Goal:** Intelligent search-and-link experience via embeddings. Also sets up the Python service infrastructure that agents (Phase E) will use.
 
-### Infrastructure
-- Deploy **FastAPI service on Railway**
-- Install sentence-transformers (all-MiniLM-L6-v2 for embeddings)
-- Create `/embed` and `/search` endpoints
-- Test: embed query → search → get results
+### What was built
 
-### Database changes needed
-- Enable pgvector extension in Supabase
-- Add `embedding vector(384)` column to evidence_bank
-- Create `search_evidence(query_embedding, limit)` function
+**SQL migration** (`supabase_phase_d_vector_search.sql` — timestamps 5:00-5:03 PM):
+- Enabled pgvector extension
+- Added `embedding vector(384)` column to `evidence_bank`
+- Created `search_evidence()` function for cosine similarity search within workspace
+- Created IVFFlat index for fast approximate nearest neighbor search
 
-### Next.js integration
-- `POST /api/evidence-bank/embed` — Trigger embedding for evidence item
-- "Search Sources" tab in evidence popover (semantic search)
-- AI evidence suggestions on notes
-- "Smart Search" in Evidence Bank UI
+**Python FastAPI embedding service** (`embedding-service/`):
+- `main.py` — FastAPI with `/embed`, `/embed-batch`, and `/health` endpoints
+- Uses `all-MiniLM-L6-v2` model (384-dim vectors, normalized)
+- Bearer token auth via `EMBEDDING_API_KEY` env var
+- `Dockerfile` for Railway deployment (pre-downloads model at build time)
+- `railway.json` for Railway config with healthcheck
 
-### n8n integration
-- Workflow: new evidence ingested → call Python `/embed` → store embedding
-- Workflow: scheduled evidence refresh → update all embeddings
+**Next.js API routes:**
+- `POST /api/evidence-bank/embed` — Generate embeddings for single item or batch all
+- `POST /api/evidence-bank/search` — Semantic search (calls Python service for query embedding, then Supabase RPC)
+
+**UI enhancements:**
+- Evidence popover: Added "Search" tab (4th tab) with semantic search — shows similarity % match, link/unlink evidence
+- Evidence Bank page: Added "Smart Search" toggle for semantic mode, "Embed All" button to batch generate embeddings, status notifications
+
+### Files created
+- `supabase_phase_d_vector_search.sql` — pgvector migration
+- `embedding-service/main.py` — FastAPI embedding service
+- `embedding-service/requirements.txt` — Python dependencies
+- `embedding-service/Dockerfile` — Docker build config
+- `embedding-service/railway.json` — Railway deployment config
+- `embedding-service/.env.example` — Environment variable template
+- `embedding-service/.gitignore` — Python gitignore
+- `app/src/app/api/evidence-bank/embed/route.ts` — Embed API route
+- `app/src/app/api/evidence-bank/search/route.ts` — Search API route
+
+### Files modified
+- `app/src/types/database.ts` — Added `embedding` field to evidence_bank types, `VectorSearchResult` interface
+- `app/src/components/session/evidence-popover.tsx` — Added semantic "Search" tab with similarity display
+- `app/src/app/evidence-bank/page.tsx` — Added Smart Search mode, Embed All button, semantic results display
+
+### Environment variables needed
+- `EMBEDDING_SERVICE_URL` — URL of deployed Python service (e.g., `https://your-service.railway.app`)
+- `EMBEDDING_API_KEY` — Shared secret for authenticating between Next.js and Python service
+
+### Deployment steps
+1. Run `supabase_phase_d_vector_search.sql` in Supabase SQL Editor
+2. Deploy `embedding-service/` to Railway (Docker)
+3. Set `EMBEDDING_API_KEY` on both Railway and Vercel
+4. Set `EMBEDDING_SERVICE_URL` on Vercel (pointing to Railway URL)
+5. Click "Embed All" on Evidence Bank page to generate embeddings for existing evidence
 
 ---
 
-## Phase E: AI Agents — PLANNED
+## Phase E: AI Agents — UP NEXT
 
 **Goal:** Automate evidence gathering, staleness detection, contradiction flagging, and competitor monitoring. This is the intelligence layer.
 

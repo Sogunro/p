@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { StickyNote, Evidence, EvidenceBank, SourceSystemExpanded } from '@/types/database'
+import type { StickyNote, Evidence, EvidenceBank, SourceSystemExpanded, VectorSearchResult } from '@/types/database'
 import { getStrengthBand, getStrengthBandColor } from '@/lib/evidence-strength'
 
 interface EvidencePopoverProps {
@@ -58,7 +58,7 @@ export function EvidencePopover({
   onLinkEvidence,
   onUnlinkEvidence,
 }: EvidencePopoverProps) {
-  const [tab, setTab] = useState<'url' | 'text' | 'bank'>('url')
+  const [tab, setTab] = useState<'url' | 'text' | 'bank' | 'search'>('url')
   const [url, setUrl] = useState('')
   const [text, setText] = useState('')
   const [title, setTitle] = useState('')
@@ -67,6 +67,10 @@ export function EvidencePopover({
   const [bankEvidence, setBankEvidence] = useState<EvidenceBank[]>([])
   const [bankLoading, setBankLoading] = useState(false)
   const [bankSearch, setBankSearch] = useState('')
+  const [semanticQuery, setSemanticQuery] = useState('')
+  const [semanticResults, setSemanticResults] = useState<VectorSearchResult[]>([])
+  const [semanticLoading, setSemanticLoading] = useState(false)
+  const [semanticError, setSemanticError] = useState('')
   const popoverRef = useRef<HTMLDivElement>(null)
 
   // Fetch evidence bank when bank tab is selected
@@ -88,6 +92,31 @@ export function EvidencePopover({
       console.error('Failed to fetch bank evidence:', error)
     } finally {
       setBankLoading(false)
+    }
+  }
+
+  const handleSemanticSearch = async () => {
+    if (!semanticQuery.trim()) return
+    setSemanticLoading(true)
+    setSemanticError('')
+    try {
+      const response = await fetch('/api/evidence-bank/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: semanticQuery, limit: 10 }),
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSemanticResults(data.results || [])
+      } else {
+        const data = await response.json()
+        setSemanticError(data.error || 'Search failed')
+      }
+    } catch (error) {
+      console.error('Semantic search failed:', error)
+      setSemanticError('Search unavailable')
+    } finally {
+      setSemanticLoading(false)
     }
   }
 
@@ -199,11 +228,12 @@ export function EvidencePopover({
 
       {/* Add Evidence */}
       <div className="p-4">
-        <Tabs value={tab} onValueChange={(v) => setTab(v as 'url' | 'text' | 'bank')}>
-          <TabsList className="grid w-full grid-cols-3 mb-3">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as 'url' | 'text' | 'bank' | 'search')}>
+          <TabsList className="grid w-full grid-cols-4 mb-3">
             <TabsTrigger value="url" className="text-xs">URL</TabsTrigger>
             <TabsTrigger value="text" className="text-xs">Text</TabsTrigger>
             <TabsTrigger value="bank" className="text-xs">Bank</TabsTrigger>
+            <TabsTrigger value="search" className="text-xs">Search</TabsTrigger>
           </TabsList>
 
           <TabsContent value="url" className="space-y-2 mt-0">
@@ -361,10 +391,99 @@ export function EvidencePopover({
               )}
             </ScrollArea>
           </TabsContent>
+
+          <TabsContent value="search" className="mt-0">
+            <div className="flex gap-1 mb-2">
+              <Input
+                placeholder="Describe what you're looking for..."
+                value={semanticQuery}
+                onChange={(e) => setSemanticQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSemanticSearch()
+                }}
+                className="text-xs h-8"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSemanticSearch}
+                disabled={semanticLoading || !semanticQuery.trim()}
+                className="h-8 px-2 shrink-0"
+              >
+                {semanticLoading ? (
+                  <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                )}
+              </Button>
+            </div>
+            <ScrollArea className="h-[180px]">
+              {semanticError ? (
+                <p className="text-xs text-red-500 text-center py-4">{semanticError}</p>
+              ) : semanticResults.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">
+                  {semanticQuery ? 'No matching evidence found.' : 'Search evidence by meaning, not just keywords.'}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {semanticResults.map((item) => {
+                    const isLinked = linkedBankIds.has(item.id)
+                    return (
+                      <div
+                        key={item.id}
+                        className={`p-2 rounded border text-xs cursor-pointer transition-colors ${
+                          isLinked
+                            ? 'bg-green-50 border-green-300'
+                            : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                        }`}
+                        onClick={() => {
+                          if (isLinked) {
+                            onUnlinkEvidence?.(item.id)
+                          } else {
+                            onLinkEvidence?.(item.id)
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-1 mb-1">
+                          <span>{SOURCE_ICONS[item.source_system] || '📎'}</span>
+                          {item.computed_strength > 0 && (
+                            <span
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                              style={{
+                                color: getStrengthBandColor(getStrengthBand(item.computed_strength)),
+                                backgroundColor: `${getStrengthBandColor(getStrengthBand(item.computed_strength))}15`,
+                              }}
+                            >
+                              {Math.round(item.computed_strength)}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-purple-600 font-medium ml-auto">
+                            {Math.round(item.similarity * 100)}% match
+                          </span>
+                          {isLinked && (
+                            <Badge className="text-[10px] px-1 py-0 bg-green-600">Linked</Badge>
+                          )}
+                        </div>
+                        <p className="font-medium truncate">{item.title}</p>
+                        {item.content && (
+                          <p className="text-gray-500 line-clamp-1">{item.content}</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
         </Tabs>
 
         {/* Evidence Strength Selector - Only show for URL/Text tabs */}
-        {tab !== 'bank' && (
+        {tab !== 'bank' && tab !== 'search' && (
           <div className="mt-3">
             <label className="text-xs font-medium text-gray-600 mb-1.5 block">Evidence Strength</label>
             <div className="flex gap-1">
@@ -388,7 +507,7 @@ export function EvidencePopover({
           </div>
         )}
 
-        {tab !== 'bank' && (
+        {tab !== 'bank' && tab !== 'search' && (
           <Button
             size="sm"
             onClick={handleAdd}
