@@ -23,15 +23,30 @@ export async function GET() {
     }
 
     // Fetch all evidence in the workspace
-    const { data: evidence, error } = await supabase
+    // Try with profiles join first, fall back to raw query if join fails
+    // (handles case where column is named user_id instead of created_by)
+    let evidence = null
+    const { data: evidenceWithJoin, error: joinError } = await supabase
       .from('evidence_bank')
       .select('*, profiles:created_by(full_name)')
       .eq('workspace_id', membership.workspace_id)
       .order('created_at', { ascending: false })
 
-    if (error) {
-      console.error('Error fetching evidence:', error)
-      return NextResponse.json({ error: 'Failed to fetch evidence' }, { status: 500 })
+    if (joinError) {
+      console.error('Evidence fetch with join failed, trying without join:', joinError.message)
+      const { data: evidenceRaw, error: rawError } = await supabase
+        .from('evidence_bank')
+        .select('*')
+        .eq('workspace_id', membership.workspace_id)
+        .order('created_at', { ascending: false })
+
+      if (rawError) {
+        console.error('Error fetching evidence (raw):', rawError)
+        return NextResponse.json({ error: 'Failed to fetch evidence', details: rawError.message }, { status: 500 })
+      }
+      evidence = evidenceRaw
+    } else {
+      evidence = evidenceWithJoin
     }
 
     return NextResponse.json({ evidence, workspaceId: membership.workspace_id })

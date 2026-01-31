@@ -93,6 +93,7 @@ export default function EvidenceBankPage() {
   const [showNewBanner, setShowNewBanner] = useState(true)
   const [syncLoading, setSyncLoading] = useState(false)
   const [syncStatus, setSyncStatus] = useState('')
+  const [apiErrors, setApiErrors] = useState<string[]>([])
 
   useEffect(() => {
     fetchEvidence()
@@ -106,9 +107,13 @@ export default function EvidenceBankPage() {
       if (response.ok) {
         const data = await response.json()
         setPendingInsights(data.insights || [])
+      } else {
+        const data = await response.json().catch(() => ({}))
+        setApiErrors(prev => [...prev, `Insights feed: ${data.error || response.statusText}`])
       }
     } catch (error) {
       console.error('Failed to fetch pending insights:', error)
+      setApiErrors(prev => [...prev, `Insights feed: ${String(error)}`])
     }
   }
 
@@ -186,6 +191,9 @@ export default function EvidenceBankPage() {
         // Count items without embeddings
         const noEmbedding = items.filter(e => !e.embedding)
         setUnembeddedCount(noEmbedding.length)
+      } else {
+        const data = await response.json().catch(() => ({}))
+        setApiErrors(prev => [...prev, `Evidence bank: ${data.error || response.statusText} ${data.details || ''}`])
       }
     } catch (error) {
       console.error('Failed to fetch evidence:', error)
@@ -508,6 +516,25 @@ export default function EvidenceBankPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* API Error notifications */}
+        {apiErrors.length > 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-medium">Pipeline issues detected:</span>
+              <button onClick={() => setApiErrors([])} className="text-red-500 hover:text-red-700 ml-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <ul className="list-disc list-inside space-y-1">
+              {apiErrors.map((err, i) => (
+                <li key={i}>{err}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Embed status notification */}
         {embedStatus && (
           <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200 text-sm text-blue-800 flex items-center justify-between">
