@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -156,6 +157,7 @@ export function AnalysisResultsModal({
   onClearResults,
   isReanalyzing = false,
 }: AnalysisResultsModalProps) {
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState('alignment')
   const [copied, setCopied] = useState(false)
 
@@ -724,7 +726,20 @@ export function AnalysisResultsModal({
               {copied ? 'Copied!' : 'Share'}
             </Button>
           </div>
-          <Button onClick={onClose}>Close</Button>
+          <div className="flex gap-2">
+            <Button
+              variant="default"
+              onClick={() => {
+                if (analysisData?.session_id) {
+                  router.push(`/session/${analysisData.session_id}/analysis`)
+                  onClose()
+                }
+              }}
+            >
+              View Full Analysis
+            </Button>
+            <Button variant="outline" onClick={onClose}>Close</Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

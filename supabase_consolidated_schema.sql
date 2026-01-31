@@ -1,13 +1,13 @@
 -- ============================================
 -- Product Discovery Tool - Consolidated Database Schema
 -- ============================================
--- Version: 1.0.0
--- Last Updated: 2026-01-23
+-- Version: 2.0.0
+-- Last Updated: 2026-01-31
 --
--- This file consolidates all migrations (Phases 1-5) into a single,
+-- This file consolidates ALL migrations (Phases 1-6) into a single,
 -- well-organized schema file. Safe to run on fresh database.
 --
--- Tables: 22 total
+-- Tables: 24 total
 -- ============================================
 
 -- ============================================
@@ -484,12 +484,14 @@ DROP POLICY IF EXISTS "Users can delete own sessions" ON sessions;
 CREATE POLICY "Users can delete own sessions" ON sessions
     FOR DELETE USING (auth.uid() = user_id);
 
--- TODO: Add workspace-based policies for team collaboration
--- DROP POLICY IF EXISTS "Workspace members can view sessions" ON sessions;
--- CREATE POLICY "Workspace members can view sessions" ON sessions
---     FOR SELECT USING (
---         workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid())
---     );
+-- Workspace-based policy (team collaboration)
+DROP POLICY IF EXISTS "Workspace members can view sessions" ON sessions;
+CREATE POLICY "Workspace members can view sessions" ON sessions
+    FOR SELECT USING (
+        workspace_id IN (
+            SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+        )
+    );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_workspace ON sessions(workspace_id);
@@ -768,6 +770,8 @@ CREATE TABLE IF NOT EXISTS evidence_bank (
 
 ALTER TABLE evidence_bank ENABLE ROW LEVEL SECURITY;
 
+-- Workspace-based policies only (no user-based to avoid conflicts)
+DROP POLICY IF EXISTS "Users can manage own evidence bank" ON evidence_bank;
 -- Workspace-based policies (preferred for team collaboration)
 DROP POLICY IF EXISTS "Users can view evidence in their workspaces" ON evidence_bank;
 CREATE POLICY "Users can view evidence in their workspaces" ON evidence_bank
@@ -792,9 +796,6 @@ CREATE POLICY "Users can delete evidence in their workspaces" ON evidence_bank
     FOR DELETE USING (
         workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid())
     );
-
--- NOTE: Removed conflicting "Users can manage own evidence bank" (user_id based) policy
--- Keep only workspace-based policies for proper team collaboration
 
 CREATE INDEX IF NOT EXISTS idx_evidence_bank_workspace ON evidence_bank(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_evidence_bank_source ON evidence_bank(source_system);
@@ -892,6 +893,11 @@ CREATE TABLE IF NOT EXISTS sticky_note_evidence_links (
 
 ALTER TABLE sticky_note_evidence_links ENABLE ROW LEVEL SECURITY;
 
+-- Clean policies (no duplicates)
+DROP POLICY IF EXISTS "Users can insert their sticky note evidence links" ON sticky_note_evidence_links;
+DROP POLICY IF EXISTS "Users can delete their sticky note evidence links" ON sticky_note_evidence_links;
+DROP POLICY IF EXISTS "Users can view their sticky note evidence links" ON sticky_note_evidence_links;
+
 -- Single set of policies (removed duplicates)
 DROP POLICY IF EXISTS "Users can view links for notes in their sessions" ON sticky_note_evidence_links;
 CREATE POLICY "Users can view links for notes in their sessions" ON sticky_note_evidence_links
@@ -937,7 +943,70 @@ COMMENT ON TABLE sticky_note_evidence_links IS 'Links sticky notes to evidence b
 -- ============================================
 
 -- --------------------------------------------
--- 8.1 INSIGHTS_FEED (Daily fetched insights from n8n)
+-- 8.1 DAILY_INSIGHTS_ANALYSIS (AI analysis of daily batches)
+-- NOTE: Created before insights_feed due to FK reference
+-- --------------------------------------------
+CREATE TABLE IF NOT EXISTS daily_insights_analysis (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE NOT NULL,
+    analysis_date DATE NOT NULL,
+    insight_count INTEGER DEFAULT 0,
+    sources_included TEXT[] DEFAULT '{}',
+    -- AI Analysis Results
+    summary TEXT,
+    themes JSONB DEFAULT '[]',
+    patterns JSONB DEFAULT '[]',
+    priorities JSONB DEFAULT '[]',
+    cross_source_connections JSONB DEFAULT '[]',
+    action_items JSONB DEFAULT '[]',
+    raw_response JSONB,
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(workspace_id, analysis_date)
+);
+
+ALTER TABLE daily_insights_analysis ENABLE ROW LEVEL SECURITY;
+
+-- Clean policies using SECURITY DEFINER function (no duplicates)
+DROP POLICY IF EXISTS "Users can view their daily insights analysis" ON daily_insights_analysis;
+DROP POLICY IF EXISTS "Users can insert their daily insights analysis" ON daily_insights_analysis;
+DROP POLICY IF EXISTS "Users can update their daily insights analysis" ON daily_insights_analysis;
+
+DROP POLICY IF EXISTS "Users can view analyses for their workspaces" ON daily_insights_analysis;
+CREATE POLICY "Users can view analyses for their workspaces" ON daily_insights_analysis
+    FOR SELECT USING (
+        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
+    );
+
+DROP POLICY IF EXISTS "Users can create analyses for their workspaces" ON daily_insights_analysis;
+CREATE POLICY "Users can create analyses for their workspaces" ON daily_insights_analysis
+    FOR INSERT WITH CHECK (
+        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
+    );
+
+DROP POLICY IF EXISTS "Users can update analyses for their workspaces" ON daily_insights_analysis;
+CREATE POLICY "Users can update analyses for their workspaces" ON daily_insights_analysis
+    FOR UPDATE USING (
+        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
+    );
+
+DROP POLICY IF EXISTS "Users can delete analyses for their workspaces" ON daily_insights_analysis;
+CREATE POLICY "Users can delete analyses for their workspaces" ON daily_insights_analysis
+    FOR DELETE USING (
+        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
+    );
+
+CREATE INDEX IF NOT EXISTS idx_daily_insights_analysis_workspace_date ON daily_insights_analysis(workspace_id, analysis_date DESC);
+
+DROP TRIGGER IF EXISTS update_daily_insights_analysis_updated_at ON daily_insights_analysis;
+CREATE TRIGGER update_daily_insights_analysis_updated_at
+    BEFORE UPDATE ON daily_insights_analysis
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- --------------------------------------------
+-- 8.2 INSIGHTS_FEED (Daily fetched insights from n8n)
 -- --------------------------------------------
 CREATE TABLE IF NOT EXISTS insights_feed (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -993,64 +1062,6 @@ CREATE INDEX IF NOT EXISTS idx_insights_feed_analysis ON insights_feed(analysis_
 COMMENT ON TABLE insights_feed IS 'Daily fetched insights from external tools via n8n';
 
 
--- --------------------------------------------
--- 8.2 DAILY_INSIGHTS_ANALYSIS (AI analysis of daily batches)
--- --------------------------------------------
-CREATE TABLE IF NOT EXISTS daily_insights_analysis (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE NOT NULL,
-    analysis_date DATE NOT NULL,
-    insight_count INTEGER DEFAULT 0,
-    sources_included TEXT[] DEFAULT '{}',
-    -- AI Analysis Results
-    summary TEXT,
-    themes JSONB DEFAULT '[]',
-    patterns JSONB DEFAULT '[]',
-    priorities JSONB DEFAULT '[]',
-    cross_source_connections JSONB DEFAULT '[]',
-    action_items JSONB DEFAULT '[]',
-    raw_response JSONB,
-    -- Timestamps
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(workspace_id, analysis_date)
-);
-
-ALTER TABLE daily_insights_analysis ENABLE ROW LEVEL SECURITY;
-
--- Single set of policies using SECURITY DEFINER function (removed duplicates)
-DROP POLICY IF EXISTS "Users can view analyses for their workspaces" ON daily_insights_analysis;
-CREATE POLICY "Users can view analyses for their workspaces" ON daily_insights_analysis
-    FOR SELECT USING (
-        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
-    );
-
-DROP POLICY IF EXISTS "Users can create analyses for their workspaces" ON daily_insights_analysis;
-CREATE POLICY "Users can create analyses for their workspaces" ON daily_insights_analysis
-    FOR INSERT WITH CHECK (
-        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
-    );
-
-DROP POLICY IF EXISTS "Users can update analyses for their workspaces" ON daily_insights_analysis;
-CREATE POLICY "Users can update analyses for their workspaces" ON daily_insights_analysis
-    FOR UPDATE USING (
-        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
-    );
-
-DROP POLICY IF EXISTS "Users can delete analyses for their workspaces" ON daily_insights_analysis;
-CREATE POLICY "Users can delete analyses for their workspaces" ON daily_insights_analysis
-    FOR DELETE USING (
-        workspace_id IN (SELECT get_user_workspace_ids(auth.uid()))
-    );
-
-CREATE INDEX IF NOT EXISTS idx_daily_insights_analysis_workspace_date ON daily_insights_analysis(workspace_id, analysis_date DESC);
-
-DROP TRIGGER IF EXISTS update_daily_insights_analysis_updated_at ON daily_insights_analysis;
-CREATE TRIGGER update_daily_insights_analysis_updated_at
-    BEFORE UPDATE ON daily_insights_analysis
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
-
 -- ============================================
 -- SECTION 9: ANALYSIS TABLES
 -- ============================================
@@ -1069,6 +1080,17 @@ CREATE TABLE IF NOT EXISTS session_analyses (
     constraint_analysis JSONB,
     checklist_review JSONB,
     raw_response JSONB,
+    -- Comprehensive analysis fields (Phase 5)
+    session_diagnosis JSONB,
+    evidence_assessment JSONB,
+    strategic_alignment JSONB,
+    solutions_analysis JSONB,
+    pattern_detection JSONB,
+    priority_ranking JSONB,
+    next_steps JSONB,
+    hypotheses JSONB,
+    conflicts JSONB,
+    -- Timestamp
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -1094,9 +1116,158 @@ CREATE POLICY "Users can create analyses" ON session_analyses
         )
     );
 
+DROP POLICY IF EXISTS "Users can delete own analyses" ON session_analyses;
+CREATE POLICY "Users can delete own analyses" ON session_analyses
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM sessions
+            WHERE sessions.id = session_analyses.session_id
+            AND sessions.user_id = auth.uid()
+        )
+    );
+
+CREATE INDEX IF NOT EXISTS idx_session_analyses_session_id ON session_analyses(session_id);
+
+COMMENT ON COLUMN session_analyses.session_diagnosis IS 'Session health: overall_quality, evidence_maturity, session_nature, key_strengths, key_gaps';
+COMMENT ON COLUMN session_analyses.evidence_assessment IS 'Evidence quality: total_sources, source_types, quality_breakdown, evidence_quality_score';
+COMMENT ON COLUMN session_analyses.strategic_alignment IS 'Alignment scores: vision_alignment_score, goals_coverage, kpi_impact, overall_alignment_score';
+COMMENT ON COLUMN session_analyses.solutions_analysis IS 'Solution recs: solution, problem_solved, recommendation (BUILD_NOW/VALIDATE_FIRST/DEFER), feasibility';
+COMMENT ON COLUMN session_analyses.pattern_detection IS 'Patterns: shared_evidence, convergent_patterns, contradictions, evidence_gaps';
+COMMENT ON COLUMN session_analyses.priority_ranking IS 'Ranked items: rank, item, type, total_score, score_breakdown, why_this_rank';
+COMMENT ON COLUMN session_analyses.next_steps IS 'Actions: build_now, validate_first, defer - each with action, method, effort';
+COMMENT ON COLUMN session_analyses.hypotheses IS 'Hypotheses: for_problem, hypothesis (if/then/because), research_questions, success_criteria';
+COMMENT ON COLUMN session_analyses.conflicts IS 'Conflicts: type, item, details, suggestion';
+
 
 -- ============================================
--- SECTION 10: SIGNUP TRIGGERS
+-- SECTION 10: VALIDATION TABLES (Phase 6)
+-- ============================================
+
+-- --------------------------------------------
+-- 10.1 VALIDATION_WORKFLOWS (Hypothesis tracking)
+-- --------------------------------------------
+CREATE TABLE IF NOT EXISTS validation_workflows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    analysis_id UUID REFERENCES session_analyses(id) ON DELETE SET NULL,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    -- What we're validating
+    item_type TEXT NOT NULL CHECK (item_type IN ('problem', 'assumption', 'hypothesis', 'solution')),
+    item_content TEXT NOT NULL,
+    item_section TEXT,
+    original_confidence NUMERIC(3,2) CHECK (original_confidence >= 0 AND original_confidence <= 1),
+    -- Hypothesis (IF/THEN/BECAUSE format)
+    hypothesis_if TEXT,
+    hypothesis_then TEXT,
+    hypothesis_because TEXT,
+    -- Validation details
+    validation_method TEXT, -- survey, interview, analytics, prototype_test, A_B_test
+    research_questions JSONB DEFAULT '[]'::jsonb,
+    success_criteria TEXT,
+    sample_size_target TEXT,
+    -- Status tracking
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'validated', 'invalidated', 'needs_more_data', 'pivoted')),
+    priority TEXT DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+    -- Results
+    actual_sample_size INTEGER,
+    test_results TEXT,
+    key_findings JSONB DEFAULT '[]'::jsonb,
+    final_confidence NUMERIC(3,2) CHECK (final_confidence >= 0 AND final_confidence <= 1),
+    -- Decision
+    decision TEXT, -- build, pivot, kill, investigate_more
+    decision_rationale TEXT,
+    next_actions JSONB DEFAULT '[]'::jsonb,
+    -- Timestamps
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE validation_workflows ENABLE ROW LEVEL SECURITY;
+
+-- Users can view their own validation workflows
+DROP POLICY IF EXISTS "Users can view their validation workflows" ON validation_workflows;
+CREATE POLICY "Users can view their validation workflows" ON validation_workflows
+    FOR SELECT USING (user_id = auth.uid());
+
+-- Users can view validation workflows in their workspace
+DROP POLICY IF EXISTS "Users can view workspace validation workflows" ON validation_workflows;
+CREATE POLICY "Users can view workspace validation workflows" ON validation_workflows
+    FOR SELECT USING (
+        workspace_id IN (
+            SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid()
+        )
+    );
+
+-- Users can create validation workflows
+DROP POLICY IF EXISTS "Users can create validation workflows" ON validation_workflows;
+CREATE POLICY "Users can create validation workflows" ON validation_workflows
+    FOR INSERT WITH CHECK (user_id = auth.uid());
+
+-- Users can update their own validation workflows
+DROP POLICY IF EXISTS "Users can update their validation workflows" ON validation_workflows;
+CREATE POLICY "Users can update their validation workflows" ON validation_workflows
+    FOR UPDATE USING (user_id = auth.uid());
+
+-- Users can delete their own validation workflows
+DROP POLICY IF EXISTS "Users can delete their validation workflows" ON validation_workflows;
+CREATE POLICY "Users can delete their validation workflows" ON validation_workflows
+    FOR DELETE USING (user_id = auth.uid());
+
+CREATE INDEX IF NOT EXISTS idx_validation_workflows_session ON validation_workflows(session_id);
+CREATE INDEX IF NOT EXISTS idx_validation_workflows_user ON validation_workflows(user_id);
+CREATE INDEX IF NOT EXISTS idx_validation_workflows_workspace ON validation_workflows(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_validation_workflows_status ON validation_workflows(status);
+
+DROP TRIGGER IF EXISTS trigger_validation_workflows_updated_at ON validation_workflows;
+CREATE TRIGGER trigger_validation_workflows_updated_at
+    BEFORE UPDATE ON validation_workflows
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+COMMENT ON TABLE validation_workflows IS 'Hypothesis tracking and validation progress for discovery sessions';
+
+
+-- --------------------------------------------
+-- 10.2 VALIDATION_WORKFLOW_HISTORY (Change tracking)
+-- --------------------------------------------
+CREATE TABLE IF NOT EXISTS validation_workflow_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workflow_id UUID NOT NULL REFERENCES validation_workflows(id) ON DELETE CASCADE,
+    changed_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    -- What changed
+    field_changed TEXT NOT NULL,
+    old_value TEXT,
+    new_value TEXT,
+    change_note TEXT,
+    -- Timestamp
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE validation_workflow_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view workflow history" ON validation_workflow_history;
+CREATE POLICY "Users can view workflow history" ON validation_workflow_history
+    FOR SELECT USING (
+        workflow_id IN (
+            SELECT id FROM validation_workflows
+            WHERE user_id = auth.uid()
+            OR workspace_id IN (SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid())
+        )
+    );
+
+DROP POLICY IF EXISTS "Users can create workflow history" ON validation_workflow_history;
+CREATE POLICY "Users can create workflow history" ON validation_workflow_history
+    FOR INSERT WITH CHECK (changed_by = auth.uid());
+
+CREATE INDEX IF NOT EXISTS idx_validation_history_workflow ON validation_workflow_history(workflow_id);
+
+COMMENT ON TABLE validation_workflow_history IS 'Audit trail for validation workflow changes';
+
+
+-- ============================================
+-- SECTION 11: SIGNUP TRIGGERS
 -- ============================================
 
 -- Trigger: Create default constraints on profile creation
@@ -1136,7 +1307,7 @@ CREATE TRIGGER on_profile_created_create_workspace
 
 
 -- ============================================
--- SECTION 11: SEED DATA
+-- SECTION 12: SEED DATA
 -- ============================================
 
 -- Default templates
@@ -1164,7 +1335,7 @@ WHERE NOT EXISTS (SELECT 1 FROM template_sections WHERE template_id = '00000000-
 
 
 -- ============================================
--- SECTION 12: BACKFILL EXISTING USERS
+-- SECTION 13: BACKFILL EXISTING USERS
 -- ============================================
 -- Run this if you already have users without workspaces
 
@@ -1197,7 +1368,7 @@ $$;
 -- ============================================
 -- MIGRATION COMPLETE
 -- ============================================
--- Tables: 22
+-- Tables: 24
 -- 1. profiles
 -- 2. workspaces
 -- 3. workspace_members
@@ -1217,7 +1388,9 @@ $$;
 -- 17. evidence_bank
 -- 18. evidence
 -- 19. sticky_note_evidence_links
--- 20. insights_feed
--- 21. daily_insights_analysis
+-- 20. daily_insights_analysis
+-- 21. insights_feed
 -- 22. session_analyses
+-- 23. validation_workflows
+-- 24. validation_workflow_history
 -- ============================================
