@@ -44,6 +44,19 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const supabase = createClient()
   const [session, setSession] = useState(initialSession)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisElapsed, setAnalysisElapsed] = useState(0)
+
+  // Timer for analysis duration
+  useEffect(() => {
+    if (!isAnalyzing) {
+      setAnalysisElapsed(0)
+      return
+    }
+    const interval = setInterval(() => {
+      setAnalysisElapsed(prev => prev + 1)
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [isAnalyzing])
 
   // Analysis modal state
   const [showAnalysisModal, setShowAnalysisModal] = useState(false)
@@ -1098,7 +1111,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
             </Button>
           )}
           <Button onClick={handleOpenAnalyzeDialog} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze Session'}
+            {isAnalyzing ? `Analyzing... ${Math.floor(analysisElapsed / 60)}:${String(analysisElapsed % 60).padStart(2, '0')}` : 'Analyze Session'}
           </Button>
         </div>
       </header>
@@ -1629,7 +1642,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
               onClick={handleStartAnalysis}
               disabled={isAnalyzing || (evidenceCount > 0 && !lastFetchAt && analyzeWithEvidence)}
             >
-              {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
+              {isAnalyzing ? `Analyzing... ${Math.floor(analysisElapsed / 60)}:${String(analysisElapsed % 60).padStart(2, '0')}` : 'Start Analysis'}
             </Button>
           </div>
         </DialogContent>
@@ -1645,6 +1658,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         onReanalyze={handleReanalyze}
         onClearResults={handleClearResults}
         isReanalyzing={isAnalyzing}
+        elapsedSeconds={analysisElapsed}
       />
     </div>
   )

@@ -126,6 +126,7 @@ interface AnalysisResultsModalProps {
   onReanalyze: () => void
   onClearResults: () => void
   isReanalyzing?: boolean
+  elapsedSeconds?: number
 }
 
 // Progress Bar Component
@@ -171,6 +172,7 @@ export function AnalysisResultsModal({
   onReanalyze,
   onClearResults,
   isReanalyzing = false,
+  elapsedSeconds = 0,
 }: AnalysisResultsModalProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('alignment')
@@ -294,7 +296,7 @@ export function AnalysisResultsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0">
+      <DialogContent className="max-w-6xl max-h-[95vh] w-[90vw] flex flex-col p-0">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <div className="flex items-start justify-between">
@@ -320,7 +322,7 @@ export function AnalysisResultsModal({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                {isReanalyzing ? 'Analyzing...' : 'Re-analyze'}
+                {isReanalyzing ? `Analyzing... ${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}` : 'Re-analyze'}
               </Button>
               <button
                 onClick={onClearResults}
