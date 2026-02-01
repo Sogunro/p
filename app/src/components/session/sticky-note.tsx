@@ -153,22 +153,8 @@ export function StickyNote({
     }
   }
 
-  // Gap warnings computation
+  // Voice indicator — only show when agent has positively identified direct voice
   const hasDirectVoice = linked.some(e => e.has_direct_voice)
-  const uniqueSegments = [...new Set(linked.map(e => e.segment).filter((s): s is string => !!s))]
-  const newestEvidence = linked.length > 0
-    ? Math.max(...linked.map(e => new Date(e.created_at).getTime()))
-    : 0
-  const daysSinceNewest = newestEvidence > 0
-    ? Math.floor((Date.now() - newestEvidence) / (1000 * 60 * 60 * 24))
-    : -1
-
-  const gapWarnings: string[] = []
-  if (note.has_evidence && linked.length > 0) {
-    if (!hasDirectVoice) gapWarnings.push('No user voice')
-    if (uniqueSegments.length <= 1 && linked.length > 0) gapWarnings.push('Single segment')
-    if (daysSinceNewest > 30) gapWarnings.push('Stale (>' + daysSinceNewest + 'd)')
-  }
 
   return (
     <div
@@ -221,17 +207,13 @@ export function StickyNote({
         </div>
       )}
 
-      {/* Voice indicator (bottom-right, outside card) */}
-      {note.has_evidence && linked.length > 0 && (
+      {/* Voice indicator (bottom-right) — only shown when agent confirms direct voice */}
+      {hasDirectVoice && (
         <div
-          className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${
-            hasDirectVoice
-              ? 'bg-green-500 text-white'
-              : 'bg-gray-300 text-gray-600'
-          }`}
-          title={hasDirectVoice ? 'Has direct user voice' : 'No direct user voice'}
+          className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] bg-green-500 text-white"
+          title="Has direct user voice"
         >
-          {hasDirectVoice ? '!' : '?'}
+          V
         </div>
       )}
 
@@ -253,21 +235,9 @@ export function StickyNote({
             placeholder="Type here..."
           />
         ) : (
-          <>
-            <p className="text-xs text-gray-700 overflow-hidden flex-1 leading-tight">
-              {content || <span className="italic text-gray-400">Double-click to edit</span>}
-            </p>
-            {/* Gap warnings */}
-            {gapWarnings.length > 0 && (
-              <div className="flex flex-wrap gap-0.5 mt-0.5">
-                {gapWarnings.map((w, i) => (
-                  <span key={i} className="text-[7px] px-1 rounded bg-orange-100 text-orange-700 leading-tight">
-                    {w}
-                  </span>
-                ))}
-              </div>
-            )}
-          </>
+          <p className="text-xs text-gray-700 overflow-hidden flex-1 leading-tight">
+            {content || <span className="italic text-gray-400">Double-click to edit</span>}
+          </p>
         )}
 
         {/* Bottom toolbar */}

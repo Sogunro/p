@@ -7,18 +7,17 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { StickyNote } from './sticky-note'
 import { SectionContainer } from './section-container'
 import { EvidencePopover } from './evidence-popover'
 import { AnalysisResultsModal, AnalysisData } from './analysis-results-modal'
+import { CanvasSidebar } from './canvas-sidebar'
 import type { Session, Section, StickyNote as StickyNoteType, Evidence, EvidenceBank, SourceSystemExpanded, SectionType } from '@/types/database'
 
 interface SessionData extends Session {
@@ -50,8 +49,13 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const [showAnalysisModal, setShowAnalysisModal] = useState(false)
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
   const [hasExistingAnalysis, setHasExistingAnalysis] = useState(false)
-  const [showChecklist, setShowChecklist] = useState(false)
-  const [showConstraints, setShowConstraints] = useState(false)
+  // Collapsible context panels
+  const [objectivesExpanded, setObjectivesExpanded] = useState(false)
+  const [checklistExpanded, setChecklistExpanded] = useState(false)
+  const [constraintsExpanded, setConstraintsExpanded] = useState(false)
+  const [editingObjectiveId, setEditingObjectiveId] = useState<string | null>(null)
+  const [objectiveEditValue, setObjectiveEditValue] = useState('')
+  const [newObjectiveText, setNewObjectiveText] = useState('')
   const [activeEvidenceNote, setActiveEvidenceNote] = useState<string | null>(null)
   const [evidencePosition, setEvidencePosition] = useState({ x: 0, y: 0 })
 
@@ -568,6 +572,38 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
     setConstraintValue('')
   }
 
+  const handleAddObjective = async (content: string) => {
+    const maxOrder = session.session_objectives.reduce((max, o) => Math.max(max, o.order_index), -1) + 1
+    const { data, error } = await supabase
+      .from('session_objectives')
+      .insert({ session_id: session.id, content, order_index: maxOrder })
+      .select()
+      .single()
+
+    if (!error && data) {
+      setSession(prev => ({
+        ...prev,
+        session_objectives: [...prev.session_objectives, data],
+      }))
+    }
+  }
+
+  const handleEditObjective = async (id: string, content: string) => {
+    await supabase.from('session_objectives').update({ content }).eq('id', id)
+    setSession(prev => ({
+      ...prev,
+      session_objectives: prev.session_objectives.map(o => o.id === id ? { ...o, content } : o),
+    }))
+  }
+
+  const handleDeleteObjective = async (id: string) => {
+    await supabase.from('session_objectives').delete().eq('id', id)
+    setSession(prev => ({
+      ...prev,
+      session_objectives: prev.session_objectives.filter(o => o.id !== id),
+    }))
+  }
+
   const [showEvidenceWarning, setShowEvidenceWarning] = useState(false)
   const [evidenceWarningMessage, setEvidenceWarningMessage] = useState('')
 
@@ -958,12 +994,6 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           >
             {isLinkMode ? '🔗 Linking...' : '🔗 Link Notes'}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowChecklist(true)}>
-            Checklist
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowConstraints(true)}>
-            Constraints
-          </Button>
           {/* Filter dropdown */}
           <select
             value={filterBy}
@@ -1041,44 +1071,186 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         </div>
       </header>
 
-      {/* Objectives Bar - Compact Centered Layout */}
-      <div className="bg-primary/5 border-b border-primary/20 px-4 py-2 shrink-0 z-10">
-        <div className="flex items-center justify-center gap-4 flex-wrap">
-          {/* Label */}
-          <span className="text-xs font-semibold text-primary uppercase tracking-wide">Objectives:</span>
+      {/* Collapsible Context Panels */}
+      <div className="bg-card border-b shrink-0 z-10">
+        {/* Panel Toggle Buttons */}
+        <div className="flex items-center gap-1 px-4 py-1.5">
+          <button
+            onClick={() => setObjectivesExpanded(!objectivesExpanded)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+              objectivesExpanded ? 'bg-amber-100 text-amber-800' : 'hover:bg-muted text-muted-foreground'
+            }`}
+          >
+            Objectives ({session.session_objectives.length})
+            <span className="text-[10px]">{objectivesExpanded ? '\u25B2' : '\u25BC'}</span>
+          </button>
+          <button
+            onClick={() => setChecklistExpanded(!checklistExpanded)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+              checklistExpanded ? 'bg-blue-100 text-blue-800' : 'hover:bg-muted text-muted-foreground'
+            }`}
+          >
+            Checklist ({session.session_checklist_items.filter(i => i.is_checked).length}/{session.session_checklist_items.length})
+            <span className="text-[10px]">{checklistExpanded ? '\u25B2' : '\u25BC'}</span>
+          </button>
+          <button
+            onClick={() => setConstraintsExpanded(!constraintsExpanded)}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+              constraintsExpanded ? 'bg-purple-100 text-purple-800' : 'hover:bg-muted text-muted-foreground'
+            }`}
+          >
+            Constraints ({session.session_constraints.length})
+            <span className="text-[10px]">{constraintsExpanded ? '\u25B2' : '\u25BC'}</span>
+          </button>
 
-          {/* Objectives */}
-          {session.session_objectives
-            .sort((a, b) => a.order_index - b.order_index)
-            .map((obj, i) => (
-              <div key={obj.id} className="bg-card border border-primary/30 rounded px-2 py-1 text-xs">
-                <span className="text-primary font-semibold">{i + 1}.</span> {obj.content}
-              </div>
-            ))}
-          {session.session_objectives.length === 0 && (
-            <span className="text-xs text-muted-foreground italic">No objectives defined</span>
-          )}
-
-          {/* Divider */}
-          <div className="h-4 w-px bg-border"></div>
-
-          {/* Stats */}
-          <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30 text-xs px-2 py-0.5">
-            ✓ {evidenceCount}
-          </Badge>
-          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/30 text-xs px-2 py-0.5">
-            ? {assumptionCount}
-          </Badge>
+          {/* Stats — pushed to right */}
+          <div className="ml-auto flex items-center gap-2">
+            <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30 text-xs px-2 py-0.5">
+              Evidence {evidenceCount}
+            </Badge>
+            <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700 border-yellow-500/30 text-xs px-2 py-0.5">
+              Assumptions {assumptionCount}
+            </Badge>
+          </div>
         </div>
+
+        {/* Expanded: Objectives */}
+        {objectivesExpanded && (
+          <div className="border-t bg-amber-50/50 px-4 py-3">
+            <div className="space-y-1.5 max-w-2xl">
+              {session.session_objectives
+                .sort((a, b) => a.order_index - b.order_index)
+                .map((obj, i) => (
+                  <div key={obj.id} className="flex items-center gap-2 group">
+                    <span className="text-xs font-semibold text-amber-700 w-5 shrink-0">{i + 1}.</span>
+                    {editingObjectiveId === obj.id ? (
+                      <input
+                        value={objectiveEditValue}
+                        onChange={(e) => setObjectiveEditValue(e.target.value)}
+                        onBlur={() => {
+                          if (objectiveEditValue.trim()) handleEditObjective(obj.id, objectiveEditValue.trim())
+                          setEditingObjectiveId(null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && objectiveEditValue.trim()) {
+                            handleEditObjective(obj.id, objectiveEditValue.trim())
+                            setEditingObjectiveId(null)
+                          }
+                          if (e.key === 'Escape') setEditingObjectiveId(null)
+                        }}
+                        className="flex-1 text-xs bg-white border rounded px-2 py-1 outline-none focus:ring-1 focus:ring-amber-400"
+                        autoFocus
+                      />
+                    ) : (
+                      <span
+                        className="flex-1 text-xs cursor-pointer hover:bg-white/60 rounded px-2 py-1"
+                        onClick={() => { setEditingObjectiveId(obj.id); setObjectiveEditValue(obj.content) }}
+                      >
+                        {obj.content}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => handleDeleteObjective(obj.id)}
+                      className="text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity text-sm px-1"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs w-5 text-muted-foreground shrink-0">+</span>
+                <input
+                  value={newObjectiveText}
+                  onChange={(e) => setNewObjectiveText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newObjectiveText.trim()) {
+                      handleAddObjective(newObjectiveText.trim())
+                      setNewObjectiveText('')
+                    }
+                  }}
+                  placeholder="Add objective... (Enter to save)"
+                  className="flex-1 text-xs bg-transparent border-b border-dashed border-muted-foreground/30 px-2 py-1 outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Expanded: Checklist */}
+        {checklistExpanded && (
+          <div className="border-t bg-blue-50/30 px-4 py-3">
+            <div className="space-y-1.5 max-w-2xl">
+              {session.session_checklist_items
+                .sort((a, b) => a.order_index - b.order_index)
+                .map((item) => (
+                  <div key={item.id} className="flex items-center gap-2">
+                    <Checkbox
+                      checked={item.is_checked}
+                      onCheckedChange={(checked) => handleToggleChecklist(item.id, checked as boolean)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className={`text-xs ${item.is_checked ? 'line-through text-muted-foreground' : ''}`}>
+                      {item.content}
+                    </span>
+                  </div>
+                ))}
+              {session.session_checklist_items.length === 0 && (
+                <span className="text-xs text-muted-foreground italic">No checklist items</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Expanded: Constraints */}
+        {constraintsExpanded && (
+          <div className="border-t bg-purple-50/30 px-4 py-3">
+            <div className="space-y-2 max-w-2xl">
+              {session.session_constraints.map((sc) => (
+                <div key={sc.constraint_id} className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground min-w-[100px] shrink-0">{sc.constraints.label}:</span>
+                  {editingConstraint === sc.constraint_id ? (
+                    <div className="flex items-center gap-1 flex-1">
+                      <input
+                        value={constraintValue}
+                        onChange={(e) => setConstraintValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleUpdateConstraintValue(sc.constraint_id)
+                          if (e.key === 'Escape') setEditingConstraint(null)
+                        }}
+                        className="flex-1 text-xs bg-white border rounded px-2 py-1 outline-none focus:ring-1 focus:ring-purple-400"
+                        autoFocus
+                      />
+                      <button onClick={() => handleUpdateConstraintValue(sc.constraint_id)} className="text-xs text-purple-600 font-medium px-1">Save</button>
+                    </div>
+                  ) : (
+                    <span
+                      className="flex-1 text-xs cursor-pointer hover:bg-white/60 rounded px-2 py-1"
+                      onClick={() => { setEditingConstraint(sc.constraint_id); setConstraintValue(sc.constraints.value || '') }}
+                    >
+                      {sc.constraints.value || <span className="italic text-muted-foreground/50">Click to set...</span>}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {session.session_constraints.length === 0 && (
+                <span className="text-xs text-muted-foreground italic">No constraints</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Infinite Canvas */}
-      <div
-        ref={canvasRef}
-        className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing canvas-background"
-        style={{ backgroundColor: 'var(--muted)' }}
-        onMouseDown={handleCanvasMouseDown}
-      >
+      {/* Canvas Area with Mini Sidebar */}
+      <div className="flex-1 flex overflow-hidden">
+        <CanvasSidebar />
+
+        {/* Infinite Canvas */}
+        <div
+          ref={canvasRef}
+          className="flex-1 overflow-hidden relative cursor-grab active:cursor-grabbing canvas-background"
+          style={{ backgroundColor: 'var(--muted)' }}
+          onMouseDown={handleCanvasMouseDown}
+        >
         {/* Grid pattern */}
         <div
           className="absolute inset-0 pointer-events-none"
@@ -1218,6 +1390,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           </div>
         )}
       </div>
+      </div>{/* end Canvas Area with Mini Sidebar */}
 
       {/* Evidence Popover */}
       {activeEvidenceNote && (
@@ -1232,87 +1405,6 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           onUnlinkEvidence={(evidenceBankId) => handleUnlinkEvidence(activeEvidenceNote, evidenceBankId)}
         />
       )}
-
-      {/* Checklist Dialog */}
-      <Dialog open={showChecklist} onOpenChange={setShowChecklist}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Session Checklist</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="max-h-[400px]">
-            <div className="space-y-3">
-              {session.session_checklist_items
-                .sort((a, b) => a.order_index - b.order_index)
-                .map((item) => (
-                  <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted">
-                    <Checkbox
-                      checked={item.is_checked}
-                      onCheckedChange={(checked) =>
-                        handleToggleChecklist(item.id, checked as boolean)
-                      }
-                    />
-                    <span className={item.is_checked ? 'line-through text-muted-foreground' : ''}>
-                      {item.content}
-                    </span>
-                  </div>
-                ))}
-              {session.session_checklist_items.length === 0 && (
-                <p className="text-muted-foreground text-center py-4">No checklist items</p>
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-
-      {/* Constraints Dialog - Now Editable */}
-      <Dialog open={showConstraints} onOpenChange={setShowConstraints}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Session Constraints</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="max-h-[400px]">
-            <div className="space-y-3">
-              {session.session_constraints.map((sc) => (
-                <div key={sc.constraint_id} className="border rounded-lg p-4">
-                  <div className="font-medium text-sm mb-2">{sc.constraints.label}</div>
-                  {editingConstraint === sc.constraint_id ? (
-                    <div className="flex gap-2">
-                      <Input
-                        value={constraintValue}
-                        onChange={(e) => setConstraintValue(e.target.value)}
-                        placeholder="Enter value..."
-                        className="flex-1"
-                        autoFocus
-                      />
-                      <Button size="sm" onClick={() => handleUpdateConstraintValue(sc.constraint_id)}>
-                        Save
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditingConstraint(null)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    <div
-                      className="text-muted-foreground cursor-pointer hover:bg-muted p-2 rounded border border-dashed border-muted-foreground/30"
-                      onClick={() => {
-                        setEditingConstraint(sc.constraint_id)
-                        setConstraintValue(sc.constraints.value || '')
-                      }}
-                    >
-                      {sc.constraints.value || (
-                        <span className="italic text-muted-foreground/50">Click to add value...</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {session.session_constraints.length === 0 && (
-                <p className="text-muted-foreground text-center py-4">No constraints applied to this session</p>
-              )}
-            </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
 
       {/* Evidence Warning Dialog */}
       <Dialog open={showEvidenceWarning} onOpenChange={setShowEvidenceWarning}>
