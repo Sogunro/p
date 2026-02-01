@@ -24,6 +24,12 @@ interface EvidencePopoverProps {
     source_system?: SourceSystemExpanded
   }) => void
   onRemoveEvidence: (evidenceId: string) => void
+  onUpdateEvidence?: (evidenceId: string, updates: {
+    title?: string
+    content?: string
+    url?: string
+    strength?: 'high' | 'medium' | 'low'
+  }) => void
   onLinkEvidence?: (evidenceBankId: string) => void
   onUnlinkEvidence?: (evidenceBankId: string) => void
 }
@@ -55,6 +61,7 @@ export function EvidencePopover({
   onClose,
   onAddEvidence,
   onRemoveEvidence,
+  onUpdateEvidence,
   onLinkEvidence,
   onUnlinkEvidence,
 }: EvidencePopoverProps) {
@@ -72,6 +79,13 @@ export function EvidencePopover({
   const [semanticLoading, setSemanticLoading] = useState(false)
   const [semanticError, setSemanticError] = useState('')
   const popoverRef = useRef<HTMLDivElement>(null)
+
+  // Edit state for existing evidence
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [editUrl, setEditUrl] = useState('')
+  const [editStrength, setEditStrength] = useState<'high' | 'medium' | 'low'>('medium')
 
   // Fetch evidence bank when bank tab is selected
   useEffect(() => {
@@ -168,6 +182,35 @@ export function EvidencePopover({
     }
   }
 
+  const startEditing = (ev: Evidence) => {
+    setEditingId(ev.id)
+    setEditTitle(ev.title || '')
+    setEditContent(ev.content || '')
+    setEditUrl(ev.url || '')
+    setEditStrength((ev.strength as 'high' | 'medium' | 'low') || 'medium')
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditTitle('')
+    setEditContent('')
+    setEditUrl('')
+    setEditStrength('medium')
+  }
+
+  const saveEditing = (ev: Evidence) => {
+    if (!onUpdateEvidence) return
+    const updates: { title?: string; content?: string; url?: string; strength?: 'high' | 'medium' | 'low' } = {}
+    if (editTitle !== (ev.title || '')) updates.title = editTitle
+    if (editContent !== (ev.content || '')) updates.content = editContent
+    if (editUrl !== (ev.url || '')) updates.url = editUrl
+    if (editStrength !== (ev.strength || 'medium')) updates.strength = editStrength
+    if (Object.keys(updates).length > 0) {
+      onUpdateEvidence(ev.id, updates)
+    }
+    setEditingId(null)
+  }
+
   return (
     <div
       ref={popoverRef}
@@ -189,37 +232,105 @@ export function EvidencePopover({
 
       {/* Existing Evidence */}
       {note.evidence.length > 0 && (
-        <div className="px-4 py-2 border-b max-h-[150px] overflow-y-auto">
+        <div className="px-4 py-2 border-b max-h-[200px] overflow-y-auto">
           <div className="space-y-2">
             {note.evidence.map((ev) => (
-              <div key={ev.id} className="flex items-start justify-between bg-gray-50 rounded p-2 text-xs">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${strengthLabels[ev.strength || 'medium'].color}`}>
-                      {strengthLabels[ev.strength || 'medium'].label}
-                    </span>
+              <div key={ev.id}>
+                {editingId === ev.id ? (
+                  /* Edit mode */
+                  <div className="bg-blue-50 rounded p-2 text-xs space-y-1.5 border border-blue-200">
+                    <Input
+                      placeholder="Title"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="text-xs h-7"
+                    />
+                    {ev.type === 'url' ? (
+                      <Input
+                        placeholder="https://..."
+                        value={editUrl}
+                        onChange={(e) => setEditUrl(e.target.value)}
+                        className="text-xs h-7"
+                      />
+                    ) : (
+                      <Textarea
+                        placeholder="Evidence text..."
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="text-xs min-h-[40px]"
+                      />
+                    )}
+                    <div className="flex gap-1">
+                      {(['high', 'medium', 'low'] as const).map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setEditStrength(level)}
+                          className={`flex-1 text-[10px] py-1 rounded border transition-all ${
+                            editStrength === level
+                              ? strengthLabels[level].color + ' font-medium'
+                              : 'bg-gray-50 text-gray-500 border-gray-200'
+                          }`}
+                        >
+                          {strengthLabels[level].label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1 pt-0.5">
+                      <Button size="sm" className="flex-1 h-6 text-[10px]" onClick={() => saveEditing(ev)}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 h-6 text-[10px]" onClick={cancelEditing}>
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
-                  {ev.type === 'url' ? (
-                    <a
-                      href={ev.url || '#'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline truncate block"
-                    >
-                      {ev.title || ev.url}
-                    </a>
-                  ) : (
-                    <p className="text-gray-700 line-clamp-2">{ev.title || ev.content}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => onRemoveEvidence(ev.id)}
-                  className="text-gray-400 hover:text-red-500 ml-2 shrink-0"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                ) : (
+                  /* Display mode */
+                  <div className="flex items-start justify-between bg-gray-50 rounded p-2 text-xs">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 mb-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${strengthLabels[ev.strength || 'medium'].color}`}>
+                          {strengthLabels[ev.strength || 'medium'].label}
+                        </span>
+                      </div>
+                      {ev.type === 'url' ? (
+                        <a
+                          href={ev.url || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline truncate block"
+                        >
+                          {ev.title || ev.url}
+                        </a>
+                      ) : (
+                        <p className="text-gray-700 line-clamp-2">{ev.title || ev.content}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5 ml-1 shrink-0">
+                      {onUpdateEvidence && (
+                        <button
+                          onClick={() => startEditing(ev)}
+                          className="text-gray-400 hover:text-blue-500 p-0.5"
+                          title="Edit evidence"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => onRemoveEvidence(ev.id)}
+                        className="text-gray-400 hover:text-red-500 p-0.5"
+                        title="Remove evidence"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -237,29 +348,26 @@ export function EvidencePopover({
           </TabsList>
 
           <TabsContent value="url" className="space-y-2 mt-0">
-            {/* Source Selector - Only show if no evidence exists yet */}
-            {note.evidence.length === 0 && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-gray-600">Source</label>
-                <div className="grid grid-cols-4 gap-1">
-                  {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSource(s)}
-                      className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
-                        source === s
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <span>{SOURCE_ICONS[s]}</span>
-                      <span className="capitalize text-[10px]">{s}</span>
-                    </button>
-                  ))}
-                </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-600">Source</label>
+              <div className="grid grid-cols-4 gap-1">
+                {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSource(s)}
+                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
+                      source === s
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{SOURCE_ICONS[s]}</span>
+                    <span className="capitalize text-[10px]">{s}</span>
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
             <Input
               placeholder="Title (optional)"
               value={title}
@@ -275,29 +383,26 @@ export function EvidencePopover({
           </TabsContent>
 
           <TabsContent value="text" className="space-y-2 mt-0">
-            {/* Source Selector - Only show if no evidence exists yet */}
-            {note.evidence.length === 0 && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-gray-600">Source</label>
-                <div className="grid grid-cols-4 gap-1">
-                  {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSource(s)}
-                      className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
-                        source === s
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      <span>{SOURCE_ICONS[s]}</span>
-                      <span className="capitalize text-[10px]">{s}</span>
-                    </button>
-                  ))}
-                </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-gray-600">Source</label>
+              <div className="grid grid-cols-4 gap-1">
+                {(['manual', 'slack', 'notion', 'airtable'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSource(s)}
+                    className={`flex flex-col items-center gap-0.5 p-1.5 rounded border text-xs transition-colors ${
+                      source === s
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>{SOURCE_ICONS[s]}</span>
+                    <span className="capitalize text-[10px]">{s}</span>
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
             <Input
               placeholder="Title (optional)"
               value={title}

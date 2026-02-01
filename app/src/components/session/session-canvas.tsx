@@ -448,6 +448,38 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
     }
   }
 
+  const handleUpdateEvidence = async (noteId: string, evidenceId: string, updates: {
+    title?: string
+    content?: string
+    url?: string
+    strength?: 'high' | 'medium' | 'low'
+  }) => {
+    // Update in the evidence table
+    const { error } = await supabase
+      .from('evidence')
+      .update(updates)
+      .eq('id', evidenceId)
+
+    if (!error) {
+      setSession((prev) => ({
+        ...prev,
+        sections: prev.sections.map((s) => ({
+          ...s,
+          sticky_notes: s.sticky_notes.map((n) =>
+            n.id === noteId
+              ? {
+                  ...n,
+                  evidence: n.evidence.map((e) =>
+                    e.id === evidenceId ? { ...e, ...updates } : e
+                  ),
+                }
+              : n
+          ),
+        })),
+      }))
+    }
+  }
+
   const handleRemoveEvidence = async (noteId: string, evidenceId: string) => {
     await supabase.from('evidence').delete().eq('id', evidenceId)
 
@@ -1401,6 +1433,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
           onClose={() => setActiveEvidenceNote(null)}
           onAddEvidence={(evidence) => handleAddEvidence(activeEvidenceNote, evidence)}
           onRemoveEvidence={(evidenceId) => handleRemoveEvidence(activeEvidenceNote, evidenceId)}
+          onUpdateEvidence={(evidenceId, updates) => handleUpdateEvidence(activeEvidenceNote, evidenceId, updates)}
           onLinkEvidence={(evidenceBankId) => handleLinkEvidence(activeEvidenceNote, evidenceBankId)}
           onUnlinkEvidence={(evidenceBankId) => handleUnlinkEvidence(activeEvidenceNote, evidenceBankId)}
         />

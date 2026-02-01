@@ -115,6 +115,68 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// PATCH: Update evidence in bank
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { id, title, type, url, content, strength, source_system, tags } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'Evidence ID required' }, { status: 400 })
+    }
+
+    // Get user's workspace
+    const { data: membership } = await supabase
+      .from('workspace_members')
+      .select('workspace_id')
+      .eq('user_id', user.id)
+      .single()
+
+    if (!membership) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 404 })
+    }
+
+    // Build update object with only provided fields
+    const updates: Record<string, unknown> = {}
+    if (title !== undefined) updates.title = title
+    if (type !== undefined) updates.type = type
+    if (url !== undefined) updates.url = url
+    if (content !== undefined) updates.content = content
+    if (strength !== undefined) updates.strength = strength
+    if (source_system !== undefined) updates.source_system = source_system
+    if (tags !== undefined) updates.tags = tags
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
+
+    const { data: evidence, error } = await supabase
+      .from('evidence_bank')
+      .update(updates)
+      .eq('id', id)
+      .eq('workspace_id', membership.workspace_id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error updating evidence:', error)
+      return NextResponse.json({ error: 'Failed to update evidence' }, { status: 500 })
+    }
+
+    return NextResponse.json({ evidence })
+  } catch (error) {
+    console.error('Evidence bank PATCH error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
 // DELETE: Remove evidence from bank
 export async function DELETE(request: NextRequest) {
   try {

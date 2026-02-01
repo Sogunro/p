@@ -60,6 +60,17 @@ export default function EvidenceBankPage() {
   const [addSource, setAddSource] = useState<SourceSystem>('manual')
   const [addLoading, setAddLoading] = useState(false)
 
+  // Edit form state
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editType, setEditType] = useState<'url' | 'text'>('url')
+  const [editTitle, setEditTitle] = useState('')
+  const [editUrl, setEditUrl] = useState('')
+  const [editContent, setEditContent] = useState('')
+  const [editStrength, setEditStrength] = useState<EvidenceStrength>('medium')
+  const [editSource, setEditSource] = useState<SourceSystem>('manual')
+  const [editLoading, setEditLoading] = useState(false)
+
   // Fetch evidence state
   const [showFetchDialog, setShowFetchDialog] = useState(false)
   const [fetchLoading, setFetchLoading] = useState(false)
@@ -255,6 +266,48 @@ export default function EvidenceBankPage() {
     setAddContent('')
     setAddStrength('medium')
     setAddSource('manual')
+  }
+
+  const openEditDialog = (item: EvidenceBank) => {
+    setEditId(item.id)
+    setEditType(item.type as 'url' | 'text')
+    setEditTitle(item.title)
+    setEditUrl(item.url || '')
+    setEditContent(item.content || '')
+    setEditStrength(item.strength)
+    setEditSource(item.source_system as SourceSystem)
+    setShowEditDialog(true)
+  }
+
+  const handleEditEvidence = async () => {
+    if (!editId || !editTitle) return
+
+    setEditLoading(true)
+    try {
+      const response = await fetch('/api/evidence-bank', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editId,
+          title: editTitle,
+          type: editType,
+          url: editType === 'url' ? editUrl : null,
+          content: editType === 'text' ? editContent : null,
+          strength: editStrength,
+          source_system: editSource,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setEvidence(evidence.map(e => e.id === editId ? data.evidence : e))
+        setShowEditDialog(false)
+      }
+    } catch (error) {
+      console.error('Failed to update evidence:', error)
+    } finally {
+      setEditLoading(false)
+    }
   }
 
   const handleFetchEvidence = async () => {
@@ -921,14 +974,24 @@ export default function EvidenceBankPage() {
                         Added {formatDate(item.created_at)} via {item.source_system}
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      onClick={() => handleDeleteEvidence(item.id)}
-                    >
-                      Delete
-                    </Button>
+                    <div className="flex flex-col gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                        onClick={() => openEditDialog(item)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteEvidence(item.id)}
+                      >
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -1066,6 +1129,105 @@ export default function EvidenceBankPage() {
             </Button>
             <Button onClick={handleAddEvidence} disabled={!addTitle || addLoading}>
               {addLoading ? 'Adding...' : 'Add Evidence'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Evidence Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Evidence</DialogTitle>
+            <DialogDescription>
+              Update this evidence item
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Source Picker */}
+            <div className="space-y-2">
+              <Label>Source</Label>
+              <div className="grid grid-cols-5 gap-2">
+                {(['manual', 'slack', 'notion', 'mixpanel', 'airtable'] as const).map((source) => (
+                  <button
+                    key={source}
+                    type="button"
+                    onClick={() => setEditSource(source)}
+                    className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-colors ${
+                      editSource === source
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="text-xl">{SOURCE_ICONS[source]}</span>
+                    <span className="text-xs capitalize">{source}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input
+                placeholder="Brief description of this evidence"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+
+            <Tabs value={editType} onValueChange={(v) => setEditType(v as 'url' | 'text')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="url">URL</TabsTrigger>
+                <TabsTrigger value="text">Text</TabsTrigger>
+              </TabsList>
+              <TabsContent value="url" className="space-y-2">
+                <Label>URL</Label>
+                <Input
+                  placeholder="https://..."
+                  value={editUrl}
+                  onChange={(e) => setEditUrl(e.target.value)}
+                />
+              </TabsContent>
+              <TabsContent value="text" className="space-y-2">
+                <Label>Content</Label>
+                <Textarea
+                  placeholder="Paste evidence text here..."
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  rows={4}
+                />
+              </TabsContent>
+            </Tabs>
+
+            <div className="space-y-2">
+              <Label>Evidence Strength</Label>
+              <div className="flex gap-2">
+                {(['high', 'medium', 'low'] as const).map((strength) => (
+                  <Button
+                    key={strength}
+                    type="button"
+                    variant={editStrength === strength ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setEditStrength(strength)}
+                    className={editStrength === strength ? '' : STRENGTH_COLORS[strength]}
+                  >
+                    {strength.charAt(0).toUpperCase() + strength.slice(1)}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500">
+                High: interviews, research, analytics | Medium: surveys, tickets | Low: anecdotal
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditEvidence} disabled={!editTitle || editLoading}>
+              {editLoading ? 'Saving...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
