@@ -62,6 +62,26 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const [showAnalysisModal, setShowAnalysisModal] = useState(false)
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
   const [hasExistingAnalysis, setHasExistingAnalysis] = useState(false)
+
+  // Check for existing analysis on mount
+  useEffect(() => {
+    const checkExistingAnalysis = async () => {
+      try {
+        const response = await fetch(`/api/session/${session.id}/analysis`)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.analysis) {
+            setAnalysisData(data.analysis)
+            setHasExistingAnalysis(true)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check existing analysis:', error)
+      }
+    }
+    checkExistingAnalysis()
+  }, [session.id])
+
   // Collapsible context panels — accordion (only one open at a time)
   const [expandedPanel, setExpandedPanel] = useState<'objectives' | 'checklist' | 'constraints' | null>(null)
   const togglePanel = (panel: 'objectives' | 'checklist' | 'constraints') =>
