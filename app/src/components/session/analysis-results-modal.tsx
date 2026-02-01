@@ -104,11 +104,25 @@ export interface AnalysisData {
   checklist_review: ChecklistReviewItem[]
 }
 
+// Ranked problem from session analyzer
+interface RankedProblem {
+  title: string
+  evidence_strength: number
+  source_count: number
+  segment_count: number
+  has_direct_voice: boolean
+  has_contradictions: boolean
+  is_stale: boolean
+  recommendation: 'commit' | 'validate' | 'park'
+  constraint_violations: string[]
+}
+
 interface AnalysisResultsModalProps {
   isOpen: boolean
   onClose: () => void
   analysisData: AnalysisData | null
   sessionTitle: string
+  sessionId?: string
   onReanalyze: () => void
   onClearResults: () => void
   isReanalyzing?: boolean
@@ -153,6 +167,7 @@ export function AnalysisResultsModal({
   onClose,
   analysisData,
   sessionTitle,
+  sessionId,
   onReanalyze,
   onClearResults,
   isReanalyzing = false,
@@ -161,12 +176,85 @@ export function AnalysisResultsModal({
   const [activeTab, setActiveTab] = useState('alignment')
   const [copied, setCopied] = useState(false)
 
+  // Commit to Decision dialog state
+  const [showCommitDialog, setShowCommitDialog] = useState(false)
+  const [commitItem, setCommitItem] = useState<{ title: string; strength: number } | null>(null)
+  const [commitForm, setCommitForm] = useState({
+    title: '',
+    successMetric: '',
+    owner: '',
+    reviewDate: '',
+  })
+  const [isCommitting, setIsCommitting] = useState(false)
+
   if (!analysisData) return null
 
   const totalCards = analysisData.evidence_backed.length + analysisData.assumptions.length
   const evidenceScore = totalCards > 0
     ? Math.round((analysisData.evidence_backed.length / totalCards) * 100)
     : 0
+
+  // Build ranked problems list from evidence_backed + assumptions
+  const rankedProblems: RankedProblem[] = [
+    ...analysisData.evidence_backed.map(item => ({
+      title: item.content,
+      evidence_strength: item.confidence ? Math.round(item.confidence * 100) : 75,
+      source_count: 1,
+      segment_count: 1,
+      has_direct_voice: false,
+      has_contradictions: false,
+      is_stale: false,
+      recommendation: (item.confidence && item.confidence >= 0.7 ? 'commit' : item.confidence && item.confidence >= 0.4 ? 'validate' : 'park') as 'commit' | 'validate' | 'park',
+      constraint_violations: [],
+    })),
+    ...analysisData.assumptions.map(item => ({
+      title: item.content,
+      evidence_strength: item.confidence ? Math.round(item.confidence * 100) : 15,
+      source_count: 0,
+      segment_count: 0,
+      has_direct_voice: false,
+      has_contradictions: false,
+      is_stale: false,
+      recommendation: 'park' as const,
+      constraint_violations: [],
+    })),
+  ].sort((a, b) => b.evidence_strength - a.evidence_strength)
+
+  // Strength band stats
+  const strongCount = rankedProblems.filter(p => p.evidence_strength >= 70).length
+  const moderateCount = rankedProblems.filter(p => p.evidence_strength >= 40 && p.evidence_strength < 70).length
+  const weakCount = rankedProblems.filter(p => p.evidence_strength < 40).length
+
+  // Commit handler
+  const handleCommitToDecision = async () => {
+    if (!commitForm.title.trim()) return
+    setIsCommitting(true)
+    try {
+      const response = await fetch('/api/decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: commitForm.title,
+          description: `Committed from analysis — evidence strength: ${commitItem?.strength || 0}%`,
+          status: 'committed',
+          evidence_strength: commitItem?.strength || 0,
+          success_metrics: commitForm.successMetric ? { primary: commitForm.successMetric } : {},
+          owner: commitForm.owner || null,
+          review_date: commitForm.reviewDate || null,
+          session_id: sessionId || analysisData.session_id,
+        }),
+      })
+      if (response.ok) {
+        setShowCommitDialog(false)
+        setCommitItem(null)
+        setCommitForm({ title: '', successMetric: '', owner: '', reviewDate: '' })
+      }
+    } catch (error) {
+      console.error('Failed to commit decision:', error)
+    } finally {
+      setIsCommitting(false)
+    }
+  }
 
   // Export markdown function
   const handleExportMarkdown = () => {
@@ -371,31 +459,31 @@ export function AnalysisResultsModal({
                 </div>
               </TabsContent>
 
-              {/* Overview Tab */}
+              {/* Overview Tab — Strength Band Stats */}
               <TabsContent value="overview" className="mt-0 space-y-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <Card>
                     <CardContent className="pt-4 text-center">
-                      <p className="text-sm text-gray-500">Evidence Score</p>
-                      <p className={`text-2xl font-bold ${getScoreTextColor(evidenceScore)}`}>{evidenceScore}%</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-4 text-center">
-                      <p className="text-sm text-gray-500">Evidence-based</p>
-                      <p className="text-2xl font-bold text-green-600">{analysisData.evidence_backed.length}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-4 text-center">
-                      <p className="text-sm text-gray-500">Assumptions</p>
-                      <p className="text-2xl font-bold text-yellow-600">{analysisData.assumptions.length}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-4 text-center">
-                      <p className="text-sm text-gray-500">Total Cards</p>
+                      <p className="text-sm text-gray-500">Total</p>
                       <p className="text-2xl font-bold text-gray-700">{totalCards}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-green-200">
+                    <CardContent className="pt-4 text-center">
+                      <p className="text-sm text-green-600">Strong (&gt;70%)</p>
+                      <p className="text-2xl font-bold text-green-600">{strongCount}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-yellow-200">
+                    <CardContent className="pt-4 text-center">
+                      <p className="text-sm text-yellow-600">Moderate (40-70%)</p>
+                      <p className="text-2xl font-bold text-yellow-600">{moderateCount}</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-red-200">
+                    <CardContent className="pt-4 text-center">
+                      <p className="text-sm text-red-600">Weak/Assumed (&lt;40%)</p>
+                      <p className="text-2xl font-bold text-red-600">{weakCount}</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -436,75 +524,104 @@ export function AnalysisResultsModal({
                 )}
               </TabsContent>
 
-              {/* Problems Tab */}
-              <TabsContent value="problems" className="mt-0 space-y-6">
-                {/* Validated Problems */}
-                <div>
-                  <h4 className="font-semibold text-green-700 mb-3 flex items-center gap-2">
-                    <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                    Validated Problems ({analysisData.evidence_backed.length})
+              {/* Problems Tab — Ranked by Evidence Strength */}
+              <TabsContent value="problems" className="mt-0 space-y-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="font-semibold text-gray-700">
+                    Ranked Problems ({rankedProblems.length})
                   </h4>
-                  {analysisData.evidence_backed.length > 0 ? (
-                    <div className="space-y-2">
-                      {analysisData.evidence_backed.map((item, i) => (
-                        <Card key={i} className="border-green-200 bg-green-50">
-                          <CardContent className="py-3">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-medium text-green-900">{item.content}</p>
-                                <p className="text-xs text-gray-500 mt-1">{item.section}</p>
-                              </div>
-                              <Badge className="bg-green-100 text-green-800">
-                                {item.confidence ? `${Math.round(item.confidence * 100)}%` : 'Validated'}
-                              </Badge>
-                            </div>
-                            {item.evidence_summary && (
-                              <p className="text-sm text-green-800 mt-2">{item.evidence_summary}</p>
-                            )}
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">No validated problems yet.</p>
-                  )}
+                  <div className="flex gap-2 text-xs">
+                    <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">COMMIT</span>
+                    <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">VALIDATE</span>
+                    <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600">PARK</span>
+                  </div>
                 </div>
 
-                <Separator />
+                {rankedProblems.length > 0 ? (
+                  <div className="space-y-2">
+                    {rankedProblems.map((problem, i) => {
+                      const recBorder = problem.recommendation === 'commit' ? 'border-green-200 bg-green-50' :
+                        problem.recommendation === 'validate' ? 'border-yellow-200 bg-yellow-50' :
+                        'border-gray-200 bg-gray-50'
+                      const recBadge = problem.recommendation === 'commit' ? 'bg-green-100 text-green-800' :
+                        problem.recommendation === 'validate' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-600'
+                      const strengthColor = problem.evidence_strength >= 70 ? 'text-green-600' :
+                        problem.evidence_strength >= 40 ? 'text-yellow-600' : 'text-red-600'
+                      const strengthBg = problem.evidence_strength >= 70 ? 'bg-green-500' :
+                        problem.evidence_strength >= 40 ? 'bg-yellow-500' : 'bg-red-500'
 
-                {/* Assumptions */}
-                <div>
-                  <h4 className="font-semibold text-yellow-700 mb-3 flex items-center gap-2">
-                    <span className="w-3 h-3 bg-yellow-500 rounded-full"></span>
-                    Assumptions ({analysisData.assumptions.length})
-                  </h4>
-                  {analysisData.assumptions.length > 0 ? (
-                    <div className="space-y-2">
-                      {analysisData.assumptions.map((item, i) => (
-                        <Card key={i} className="border-yellow-200 bg-yellow-50">
+                      return (
+                        <Card key={i} className={recBorder}>
                           <CardContent className="py-3">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-medium text-yellow-900">{item.content}</p>
-                                <p className="text-xs text-gray-500 mt-1">{item.section}</p>
+                            <div className="flex items-start gap-3">
+                              {/* Strength bar */}
+                              <div className="flex flex-col items-center gap-1 min-w-[40px]">
+                                <span className={`text-lg font-bold ${strengthColor}`}>
+                                  {problem.evidence_strength}
+                                </span>
+                                <div className="w-8 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className={`h-full ${strengthBg} rounded-full`} style={{ width: `${problem.evidence_strength}%` }} />
+                                </div>
                               </div>
-                              <Badge className="bg-yellow-100 text-yellow-800">
-                                {item.confidence ? `${Math.round(item.confidence * 100)}%` : 'Assumed'}
-                              </Badge>
+
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 text-sm">{problem.title}</p>
+                                {/* Flags row */}
+                                <div className="flex flex-wrap gap-1 mt-1.5">
+                                  {!problem.has_direct_voice && problem.evidence_strength > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">No voice</span>
+                                  )}
+                                  {problem.segment_count <= 1 && problem.evidence_strength > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Single segment</span>
+                                  )}
+                                  {problem.has_contradictions && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">Contradictions</span>
+                                  )}
+                                  {problem.is_stale && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Stale</span>
+                                  )}
+                                  {problem.constraint_violations.length > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                                      Constraint: {problem.constraint_violations[0]}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Recommendation + Commit */}
+                              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                <Badge className={recBadge}>
+                                  {problem.recommendation.toUpperCase()}
+                                </Badge>
+                                {problem.recommendation === 'commit' && (
+                                  <button
+                                    onClick={() => {
+                                      setCommitItem({ title: problem.title, strength: problem.evidence_strength })
+                                      setCommitForm({
+                                        title: problem.title,
+                                        successMetric: '',
+                                        owner: '',
+                                        reviewDate: '',
+                                      })
+                                      setShowCommitDialog(true)
+                                    }}
+                                    className="text-[10px] px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 transition-colors font-medium"
+                                  >
+                                    Commit
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            {item.validation_strategy && (
-                              <p className="text-sm text-yellow-800 mt-2">
-                                <strong>Validation:</strong> {item.validation_strategy}
-                              </p>
-                            )}
                           </CardContent>
                         </Card>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm">No assumptions - all items have evidence!</p>
-                  )}
-                </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-8">No problems analyzed yet.</p>
+                )}
               </TabsContent>
 
               {/* Solutions Tab */}
@@ -742,6 +859,80 @@ export function AnalysisResultsModal({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {/* Commit to Decision Dialog */}
+      {showCommitDialog && commitItem && (
+        <Dialog open={showCommitDialog} onOpenChange={setShowCommitDialog}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+                Commit to Decision
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                <p className="text-sm font-medium text-green-800">{commitItem.title}</p>
+                <p className="text-xs text-green-600 mt-1">Evidence strength: {commitItem.strength}%</p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Decision Title</label>
+                  <input
+                    type="text"
+                    value={commitForm.title}
+                    onChange={(e) => setCommitForm(f => ({ ...f, title: e.target.value }))}
+                    className="mt-1 w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="What are we committing to?"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700">Success Metric</label>
+                  <input
+                    type="text"
+                    value={commitForm.successMetric}
+                    onChange={(e) => setCommitForm(f => ({ ...f, successMetric: e.target.value }))}
+                    className="mt-1 w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    placeholder="How will we measure success?"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Owner</label>
+                    <input
+                      type="text"
+                      value={commitForm.owner}
+                      onChange={(e) => setCommitForm(f => ({ ...f, owner: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Who owns this?"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-700">Review Date</label>
+                    <input
+                      type="date"
+                      value={commitForm.reviewDate}
+                      onChange={(e) => setCommitForm(f => ({ ...f, reviewDate: e.target.value }))}
+                      className="mt-1 w-full px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCommitDialog(false)}>Cancel</Button>
+              <Button
+                onClick={handleCommitToDecision}
+                disabled={isCommitting || !commitForm.title.trim()}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isCommitting ? 'Committing...' : 'Commit Decision'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </Dialog>
   )
 }

@@ -133,6 +133,27 @@ export async function POST(request: NextRequest) {
       `- [${a.agent_type}] ${a.title}: ${(a.content || '').slice(0, 100)}`
     ).join('\n')
 
+    // 5. Gather weak/parked evidence items for "What we're NOT doing"
+    const { data: weakEvidence } = await supabase
+      .from('evidence_bank')
+      .select('id, title, computed_strength, segment')
+      .eq('workspace_id', membership.workspace_id)
+      .lt('computed_strength', 40)
+      .order('computed_strength', { ascending: true })
+      .limit(10)
+
+    const { data: parkedDecisions } = await supabase
+      .from('decisions')
+      .select('id, title, evidence_strength')
+      .in('status', ['parked', 'deferred'])
+      .order('created_at', { ascending: false })
+      .limit(10)
+
+    const notDoingText = [
+      ...(weakEvidence || []).map(e => `- "${e.title}" — strength ${e.computed_strength || 0}% (weak evidence, needs validation)`),
+      ...(parkedDecisions || []).map(d => `- "${d.title}" — parked (evidence strength: ${d.evidence_strength || 0}%)`),
+    ].join('\n')
+
     const prompt = `Generate a comprehensive discovery brief for a product team. This brief synthesizes all available evidence, decisions, and agent intelligence into pre-session intelligence.
 ${sessionContext}
 EVIDENCE (${(evidence || []).length} items, top by strength):
@@ -144,16 +165,20 @@ ${decisionText || 'No decisions made yet'}
 RECENT AGENT INSIGHTS:
 ${alertsText || 'No recent agent activity'}
 
+PARKED / WEAK ITEMS (not pursuing):
+${notDoingText || 'None — all items have adequate evidence'}
+
 Generate a discovery brief with these sections in markdown:
 1. **Executive Summary** — 2-3 sentence overview of current state
 2. **Key Themes** — Top 3-5 recurring themes across all evidence (as bullet points)
 3. **Evidence Landscape** — Summary of evidence coverage: sources, segments, strength distribution
 4. **Decision Status** — Overview of committed/validating/parked decisions
 5. **Top Risks & Gaps** — What's missing? Where is evidence weak?
-6. **Recommended Focus Areas** — What to explore in the next discovery session
-7. **Agent Intelligence** — Key findings from automated analysis
+6. **What We're NOT Doing** — Items explicitly parked or deprioritized due to weak evidence. Explain why each was parked and what evidence would be needed to reconsider.
+7. **Recommended Focus Areas** — What to explore in the next discovery session
+8. **Agent Intelligence** — Key findings from automated analysis
 
-Keep it actionable and under 500 words. Use markdown formatting.`
+Keep it actionable and under 600 words. Use markdown formatting.`
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',

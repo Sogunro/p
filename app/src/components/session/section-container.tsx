@@ -12,6 +12,10 @@ const SECTION_TYPE_CONFIG: Record<SectionType, { icon: string; accent: string; l
   assumptions: { icon: '❓', accent: 'border-yellow-400', label: 'Assumptions' },
   evidence: { icon: '📎', accent: 'border-green-400', label: 'Evidence' },
   decisions: { icon: '⚖️', accent: 'border-purple-400', label: 'Decisions' },
+  problem_space: { icon: '🎯', accent: 'border-red-400', label: 'Problem Space' },
+  pain_points: { icon: '🔥', accent: 'border-red-300', label: 'Pain Points' },
+  observed_problems: { icon: '👁️', accent: 'border-orange-300', label: 'Observed Problems' },
+  proposed_solutions: { icon: '🛠️', accent: 'border-blue-300', label: 'Proposed Solutions' },
 }
 
 interface SectionContainerProps {

@@ -977,6 +977,10 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
             <option value="problems">Problems</option>
             <option value="solutions">Solutions</option>
             <option value="decisions">Decisions</option>
+            <option value="problem_space">Problem Space</option>
+            <option value="pain_points">Pain Points</option>
+            <option value="observed_problems">Observed Problems</option>
+            <option value="proposed_solutions">Proposed Solutions</option>
           </select>
           {/* Sort dropdown */}
           <select
@@ -1512,6 +1516,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         onClose={() => setShowAnalysisModal(false)}
         analysisData={analysisData}
         sessionTitle={session.title}
+        sessionId={session.id}
         onReanalyze={handleReanalyze}
         onClearResults={handleClearResults}
         isReanalyzing={isAnalyzing}

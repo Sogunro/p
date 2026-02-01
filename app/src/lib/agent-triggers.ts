@@ -1,34 +1,89 @@
 /**
  * Agent Auto-Trigger Flow
  *
- * When evidence is linked to a sticky note, three agents fire automatically:
- * 1. Strength Calculator (local TypeScript, no LLM)
- * 2. Contradiction Detector (Railway, Haiku)
- * 3. Segment Identifier (Railway, Haiku)
+ * When evidence is linked to a sticky note, agents fire automatically.
  *
- * All run fire-and-forget — errors are logged but never block the response.
+ * PRIMARY: LangGraph orchestrator (coordinates all agents as a graph)
+ *   - Segment Identifier + Contradiction Detector (parallel)
+ *   - Strength Calculator (uses segment from prior step)
+ *   - Voice Detector (checks for direct user quotes)
+ *   - Gap Analyzer (identifies coverage gaps)
+ *
+ * FALLBACK: Individual agents if orchestrator is unavailable
+ *   1. Strength Calculator (local TypeScript, no LLM)
+ *   2. Contradiction Detector (Railway, Haiku)
+ *   3. Segment Identifier (Railway, Haiku)
  */
 
 const EMBEDDING_SERVICE_URL = process.env.EMBEDDING_SERVICE_URL || process.env.NEXT_PUBLIC_EMBEDDING_SERVICE_URL || ''
 const EMBEDDING_API_KEY = process.env.EMBEDDING_API_KEY || ''
 
 /**
- * Fire all three auto-triggered agents after evidence is linked to a sticky note.
- * Runs in parallel, fire-and-forget. Errors are logged but do not propagate.
+ * Fire agents after evidence is linked to a sticky note.
+ * Tries orchestrator first, falls back to individual agents.
  */
 export async function triggerAgentsOnEvidenceLink(
   evidenceBankId: string,
   stickyNoteId: string,
   workspaceId: string,
 ): Promise<void> {
+  // Try LangGraph orchestrator first
+  if (EMBEDDING_SERVICE_URL) {
+    try {
+      const orchestrated = await runOrchestratedFlow(evidenceBankId, stickyNoteId, workspaceId)
+      if (orchestrated) {
+        // Orchestrator handles everything — still run local strength calc
+        await runStrengthCalculator(evidenceBankId, stickyNoteId, workspaceId).catch(() => {})
+        return
+      }
+    } catch (error) {
+      console.warn('[Orchestrator] Failed, falling back to individual agents:', error)
+    }
+  }
+
+  // Fallback: individual agents
   const tasks = [
     runStrengthCalculator(evidenceBankId, stickyNoteId, workspaceId),
     runContradictionDetector(evidenceBankId, workspaceId),
     runSegmentIdentifier(evidenceBankId, workspaceId),
   ]
-
-  // Fire all in parallel, catch individual errors
   await Promise.allSettled(tasks)
+}
+
+/**
+ * LangGraph orchestrated flow — calls the Python service's /orchestrate/evidence-link
+ * which coordinates segment, contradiction, strength, voice, and gap analysis.
+ */
+async function runOrchestratedFlow(
+  evidenceBankId: string,
+  stickyNoteId: string,
+  workspaceId: string,
+): Promise<boolean> {
+  const response = await fetch(`${EMBEDDING_SERVICE_URL}/orchestrate/evidence-link`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(EMBEDDING_API_KEY ? { 'Authorization': `Bearer ${EMBEDDING_API_KEY}` } : {}),
+    },
+    body: JSON.stringify({
+      evidence_id: evidenceBankId,
+      workspace_id: workspaceId,
+      sticky_note_id: stickyNoteId,
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    console.error(`[Orchestrator] Failed (${response.status}):`, text)
+    return false
+  }
+
+  const result = await response.json()
+  console.log(
+    `[Orchestrator] Completed: segment=${result.segment}, contradictions=${result.contradictions_found}, ` +
+    `voice=${result.has_direct_voice}, gaps=${(result.gaps || []).length}`
+  )
+  return result.completed === true
 }
 
 /**

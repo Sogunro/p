@@ -454,6 +454,8 @@ export interface Database {
           source_timestamp: string | null
           // Phase D: Vector Search
           embedding: number[] | null
+          // Phase H: User Flow Improvements
+          has_direct_voice: boolean
         }
         Insert: {
           id?: string
@@ -478,6 +480,8 @@ export interface Database {
           source_timestamp?: string | null
           // Phase D: Vector Search
           embedding?: number[] | null
+          // Phase H: User Flow Improvements
+          has_direct_voice?: boolean
         }
         Update: {
           id?: string
@@ -502,6 +506,8 @@ export interface Database {
           source_timestamp?: string | null
           // Phase D: Vector Search
           embedding?: number[] | null
+          // Phase H: User Flow Improvements
+          has_direct_voice?: boolean
         }
       }
       sticky_note_evidence_links: {
@@ -833,6 +839,8 @@ export interface Database {
           created_by: string | null
           created_at: string
           updated_at: string
+          owner: string | null
+          review_date: string | null
         }
         Insert: {
           id?: string
@@ -855,6 +863,8 @@ export interface Database {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          owner?: string | null
+          review_date?: string | null
         }
         Update: {
           id?: string
@@ -877,6 +887,8 @@ export interface Database {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          owner?: string | null
+          review_date?: string | null
         }
       }
       evidence_decision_links: {
@@ -1117,7 +1129,7 @@ export type SourceSystemExpanded = SourceSystem | 'intercom' | 'gong' | 'intervi
 export type EvidenceStrength = 'high' | 'medium' | 'low'
 
 // Phase B: Decision types
-export type SectionType = 'general' | 'problems' | 'solutions' | 'assumptions' | 'evidence' | 'decisions'
+export type SectionType = 'general' | 'problems' | 'solutions' | 'assumptions' | 'evidence' | 'decisions' | 'problem_space' | 'pain_points' | 'observed_problems' | 'proposed_solutions'
 export type DecisionStatus = 'commit' | 'validate' | 'park'
 export type Decision = Database['public']['Tables']['decisions']['Row']
 export type EvidenceDecisionLink = Database['public']['Tables']['evidence_decision_links']['Row']

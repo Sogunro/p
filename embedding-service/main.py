@@ -125,6 +125,17 @@ class CompetitorMonitorRequest(BaseModel):
     workspace_id: str
 
 
+class OrchestrateEvidenceLinkRequest(BaseModel):
+    evidence_id: str
+    workspace_id: str
+    sticky_note_id: Optional[str] = None
+
+
+class OrchestrateSessionAnalysisRequest(BaseModel):
+    session_id: str
+    workspace_id: str
+
+
 # --- Embedding Endpoints ---
 
 
@@ -296,6 +307,66 @@ async def agent_competitor_monitor(req: CompetitorMonitorRequest, authorization:
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Competitor Monitor failed: {str(e)}")
+
+
+# --- LangGraph Orchestration Endpoints ---
+
+
+@app.post("/orchestrate/evidence-link")
+async def orchestrate_evidence_link(req: OrchestrateEvidenceLinkRequest, authorization: Optional[str] = Header(None)):
+    """Orchestrate the full evidence link flow via LangGraph.
+    Replaces the 3 individual agent calls with a coordinated graph."""
+    verify_api_key(authorization)
+    try:
+        from graphs.evidence_link import build_evidence_link_graph
+
+        graph = build_evidence_link_graph()
+        result = await graph.ainvoke({
+            "evidence_id": req.evidence_id,
+            "workspace_id": req.workspace_id,
+            "sticky_note_id": req.sticky_note_id,
+        })
+
+        return {
+            "success": True,
+            "segment": result.get("segment"),
+            "contradictions_found": result.get("contradictions_found", 0),
+            "has_direct_voice": result.get("has_direct_voice", False),
+            "gaps": result.get("gaps", []),
+            "computed_strength": result.get("computed_strength", 0),
+            "completed": result.get("completed", False),
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Evidence Link orchestration failed: {str(e)}")
+
+
+@app.post("/orchestrate/session-analysis")
+async def orchestrate_session_analysis(req: OrchestrateSessionAnalysisRequest, authorization: Optional[str] = Header(None)):
+    """Orchestrate the full session analysis flow via LangGraph.
+    Includes data gathering, gap analysis, and quality gate."""
+    verify_api_key(authorization)
+    try:
+        from graphs.session_analysis import build_session_analysis_graph
+
+        graph = build_session_analysis_graph()
+        result = await graph.ainvoke({
+            "session_id": req.session_id,
+            "workspace_id": req.workspace_id,
+        })
+
+        return {
+            "success": True,
+            "ranked_problems": result.get("ranked_problems", []),
+            "per_note_gaps": result.get("per_note_gaps", []),
+            "passed_quality": result.get("passed_quality", False),
+            "total_notes": result.get("total_notes", 0),
+            "completed": result.get("completed", False),
+            "analysis_result": result.get("analysis_result", {}),
+        }
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Session Analysis orchestration failed: {str(e)}")
 
 
 if __name__ == "__main__":

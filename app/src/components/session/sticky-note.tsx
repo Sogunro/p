@@ -124,14 +124,56 @@ export function StickyNote({
   const matchCount = constraintMatches.filter(c => c.matches).length
   const totalConstraints = constraints.filter(c => c.value).length
 
+  // Compute strength-based data for the note
+  const linked = note.linked_evidence || []
+  const withStrength = linked.filter(e => e.computed_strength > 0)
+  const avgStrength = withStrength.length > 0
+    ? Math.round(withStrength.reduce((s, e) => s + e.computed_strength, 0) / withStrength.length)
+    : 0
+  const strengthBand = note.has_evidence && withStrength.length > 0 ? getStrengthBand(avgStrength) : null
+
+  // Dynamic border/bg colors based on strength band
+  const getBorderColor = () => {
+    if (!note.has_evidence) return 'border-yellow-400 bg-yellow-50'
+    if (!strengthBand) return 'border-gray-300 bg-gray-50' // evidence linked but no strength computed
+    switch (strengthBand) {
+      case 'strong': return 'border-green-400 bg-green-50'
+      case 'moderate': return 'border-yellow-400 bg-yellow-50'
+      case 'weak': return 'border-red-300 bg-red-50'
+    }
+  }
+
+  const getBadgeColor = () => {
+    if (!note.has_evidence) return 'bg-yellow-500 text-white'
+    if (!strengthBand) return 'bg-gray-400 text-white'
+    switch (strengthBand) {
+      case 'strong': return 'bg-green-500 text-white'
+      case 'moderate': return 'bg-yellow-500 text-white'
+      case 'weak': return 'bg-red-500 text-white'
+    }
+  }
+
+  // Gap warnings computation
+  const hasDirectVoice = linked.some(e => e.has_direct_voice)
+  const uniqueSegments = [...new Set(linked.map(e => e.segment).filter((s): s is string => !!s))]
+  const newestEvidence = linked.length > 0
+    ? Math.max(...linked.map(e => new Date(e.created_at).getTime()))
+    : 0
+  const daysSinceNewest = newestEvidence > 0
+    ? Math.floor((Date.now() - newestEvidence) / (1000 * 60 * 60 * 24))
+    : -1
+
+  const gapWarnings: string[] = []
+  if (note.has_evidence && linked.length > 0) {
+    if (!hasDirectVoice) gapWarnings.push('No user voice')
+    if (uniqueSegments.length <= 1 && linked.length > 0) gapWarnings.push('Single segment')
+    if (daysSinceNewest > 30) gapWarnings.push('Stale (>' + daysSinceNewest + 'd)')
+  }
+
   return (
     <div
       ref={noteRef}
-      className={`absolute w-[100px] h-[100px] rounded-md shadow-md transition-all select-none ${
-        note.has_evidence
-          ? 'bg-green-50 border-2 border-green-400'
-          : 'bg-yellow-50 border-2 border-yellow-400'
-      } ${isDragging ? 'shadow-lg z-50' : 'hover:shadow-lg'} ${
+      className={`absolute w-[100px] h-[100px] rounded-md shadow-md transition-all select-none border-2 ${getBorderColor()} ${isDragging ? 'shadow-lg z-50' : 'hover:shadow-lg'} ${
         isLinkMode ? 'cursor-crosshair hover:ring-2 hover:ring-purple-400' : 'cursor-move'
       } ${isLinkSource ? 'ring-2 ring-purple-500 ring-offset-2' : ''}${
         isUnvalidated ? ' ring-1 ring-orange-400 ring-offset-1' : ''
@@ -145,13 +187,12 @@ export function StickyNote({
       onClick={handleClick}
       onDoubleClick={() => !isLinkMode && setIsEditing(true)}
     >
-      {/* Type Label */}
-      <div className={`absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wide ${
-        note.has_evidence
-          ? 'bg-green-500 text-white'
-          : 'bg-yellow-500 text-white'
-      }`}>
-        {note.has_evidence ? 'Evidence' : 'Assumption'}
+      {/* Type Label with strength */}
+      <div className={`absolute -top-2.5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[8px] font-medium uppercase tracking-wide ${getBadgeColor()}`}>
+        {note.has_evidence
+          ? withStrength.length > 0 ? `${avgStrength}%` : 'Evidence'
+          : 'Assumption'
+        }
       </div>
 
       {/* Constraint match indicator (top-right corner) */}
@@ -180,6 +221,20 @@ export function StickyNote({
         </div>
       )}
 
+      {/* Voice indicator (bottom-right, outside card) */}
+      {note.has_evidence && linked.length > 0 && (
+        <div
+          className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${
+            hasDirectVoice
+              ? 'bg-green-500 text-white'
+              : 'bg-gray-300 text-gray-600'
+          }`}
+          title={hasDirectVoice ? 'Has direct user voice' : 'No direct user voice'}
+        >
+          {hasDirectVoice ? '!' : '?'}
+        </div>
+      )}
+
       {/* Content */}
       <div className="p-2 pt-3 h-full flex flex-col">
         {isEditing ? (
@@ -198,18 +253,30 @@ export function StickyNote({
             placeholder="Type here..."
           />
         ) : (
-          <p className="text-xs text-gray-700 overflow-hidden flex-1 leading-tight">
-            {content || <span className="italic text-gray-400">Double-click to edit</span>}
-          </p>
+          <>
+            <p className="text-xs text-gray-700 overflow-hidden flex-1 leading-tight">
+              {content || <span className="italic text-gray-400">Double-click to edit</span>}
+            </p>
+            {/* Gap warnings */}
+            {gapWarnings.length > 0 && (
+              <div className="flex flex-wrap gap-0.5 mt-0.5">
+                {gapWarnings.map((w, i) => (
+                  <span key={i} className="text-[7px] px-1 rounded bg-orange-100 text-orange-700 leading-tight">
+                    {w}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         {/* Bottom toolbar */}
-        <div className="flex justify-between items-center mt-auto pt-1">
+        <div className="flex justify-between items-center mt-auto pt-0.5">
           {/* Evidence indicator/button */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={handleEvidenceClick}
-              className={`text-xs flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors ${
+              className={`text-xs flex items-center gap-0.5 px-1 py-0.5 rounded transition-colors ${
                 note.has_evidence
                   ? 'text-green-700 bg-green-200 hover:bg-green-300'
                   : 'text-gray-500 hover:bg-gray-200'
@@ -221,26 +288,6 @@ export function StickyNote({
               </svg>
               {note.has_evidence && <span>{note.evidence.length}</span>}
             </button>
-            {/* Computed strength score */}
-            {(() => {
-              const linked = note.linked_evidence || []
-              const withStrength = linked.filter(e => e.computed_strength > 0)
-              if (withStrength.length === 0) return null
-              const avg = Math.round(withStrength.reduce((s, e) => s + e.computed_strength, 0) / withStrength.length)
-              const band = getStrengthBand(avg)
-              return (
-                <span
-                  className="text-[9px] font-bold px-1 py-0.5 rounded"
-                  style={{
-                    color: getStrengthBandColor(band),
-                    backgroundColor: `${getStrengthBandColor(band)}20`,
-                  }}
-                  title={`Evidence strength: ${avg}/100`}
-                >
-                  {avg}
-                </span>
-              )
-            })()}
             {/* Contradiction badge */}
             {contradictionCount > 0 && (
               <span
