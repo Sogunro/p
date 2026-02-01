@@ -59,11 +59,12 @@ export default function DecisionDetailPage() {
   const [briefLoading, setBriefLoading] = useState(false)
 
   // Agent state
-  const [huntLoading, setHuntLoading] = useState(false)
-  const [huntResult, setHuntResult] = useState<{ found: number; summary: string } | null>(null)
-  const [crewLoading, setCrewLoading] = useState(false)
-  const [crewResult, setCrewResult] = useState<{ summary: string } | null>(null)
   const [decisionAlerts, setDecisionAlerts] = useState<Array<{ id: string; agent_type: string; alert_type: string; title: string; content: string; created_at: string }>>([])
+
+  // External push state
+  const [pushingLinear, setPushingLinear] = useState(false)
+  const [pushingJira, setPushingJira] = useState(false)
+  const [pushResult, setPushResult] = useState<{ type: string; url?: string; error?: string } | null>(null)
 
 
   useEffect(() => {
@@ -235,72 +236,48 @@ export default function DecisionDetailPage() {
     }
   }, [decisionId])
 
-  async function handleHuntEvidence() {
-    if (!decision) return
-    setHuntLoading(true)
-    setHuntResult(null)
+  async function handlePush(type: 'linear' | 'jira') {
+    const setLoading = type === 'linear' ? setPushingLinear : setPushingJira
+    setLoading(true)
+    setPushResult(null)
     try {
-      const res = await fetch('/api/agent/hunt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hypothesis: decision.hypothesis || decision.title,
-          decision_id: decisionId,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setHuntResult({ found: data.found || 0, summary: data.summary || '' })
-        // Refresh decision data to get updated evidence links
-        fetchDecision()
-        // Refresh alerts
-        const alertsRes = await fetch(`/api/agent/alerts?decision_id=${decisionId}`)
-        if (alertsRes.ok) {
-          const alertsData = await alertsRes.json()
-          setDecisionAlerts(alertsData.alerts || [])
-        }
-      }
-    } catch (error) {
-      console.error('Evidence Hunt failed:', error)
-    } finally {
-      setHuntLoading(false)
-    }
-  }
-
-  async function handleDeepAnalysis() {
-    if (!decision) return
-    setCrewLoading(true)
-    setCrewResult(null)
-    try {
-      const res = await fetch('/api/agent/analyze', {
+      const res = await fetch(`/api/integrations/${type}/push`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ decision_id: decisionId }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setCrewResult({ summary: data.summary || '' })
-        // Refresh alerts
-        const alertsRes = await fetch(`/api/agent/alerts?decision_id=${decisionId}`)
-        if (alertsRes.ok) {
-          const alertsData = await alertsRes.json()
-          setDecisionAlerts(alertsData.alerts || [])
-        }
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setPushResult({ type, url: data.external_url })
+        fetchDecision()
+      } else {
+        setPushResult({ type, error: data.error || 'Push failed' })
       }
     } catch (error) {
-      console.error('Deep Analysis failed:', error)
+      console.error(`${type} push error:`, error)
+      setPushResult({ type, error: 'Network error' })
     } finally {
-      setCrewLoading(false)
+      setLoading(false)
     }
   }
 
   async function handleGenerateBrief() {
     setBriefLoading(true)
     try {
-      const res = await fetch(`/api/decisions/${decisionId}/brief`, { method: 'POST' })
+      const res = await fetch('/api/agent/generate-brief', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision_id: decisionId }),
+      })
       if (res.ok) {
         const data = await res.json()
         setBrief(data.brief || '')
+        // Refresh alerts
+        const alertsRes = await fetch(`/api/agent/alerts?decision_id=${decisionId}`)
+        if (alertsRes.ok) {
+          const alertsData = await alertsRes.json()
+          setDecisionAlerts(alertsData.alerts || [])
+        }
       }
     } catch (error) {
       console.error('Failed to generate brief:', error)
@@ -346,17 +323,7 @@ export default function DecisionDetailPage() {
               <h1 className="text-lg font-bold text-gray-900 truncate">{decision.title}</h1>
             </div>
             <div className="flex gap-2">
-              {(decision.status === 'validate' || decision.status === 'park') && (
-                <Button variant="outline" size="sm" onClick={handleHuntEvidence} disabled={huntLoading} className="text-purple-600 border-purple-200 hover:bg-purple-50">
-                  {huntLoading ? 'Hunting...' : 'Hunt Evidence'}
-                </Button>
-              )}
-              {linkedEvidence.length >= 2 && (
-                <Button variant="outline" size="sm" onClick={handleDeepAnalysis} disabled={crewLoading} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
-                  {crewLoading ? 'Analyzing...' : 'Deep Analysis'}
-                </Button>
-              )}
-              <Button variant="outline" size="sm" onClick={handleGenerateBrief} disabled={briefLoading}>
+              <Button variant="outline" size="sm" onClick={handleGenerateBrief} disabled={briefLoading} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
                 {briefLoading ? 'Generating...' : 'Generate Brief'}
               </Button>
               <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={handleDelete}>
@@ -641,50 +608,6 @@ export default function DecisionDetailPage() {
               </Card>
             )}
 
-            {/* Evidence Hunt Results */}
-            {huntResult && (
-              <Card className="border-purple-200">
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-lg text-purple-700">Evidence Hunt Results</CardTitle>
-                    <Button variant="ghost" size="sm" onClick={() => setHuntResult(null)}>
-                      Dismiss
-                    </Button>
-                  </div>
-                  <CardDescription>
-                    Found {huntResult.found} relevant evidence item{huntResult.found !== 1 ? 's' : ''}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none whitespace-pre-wrap text-gray-700">
-                    {huntResult.summary}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Deep Analysis Results */}
-            {crewResult && (
-              <Card className="border-indigo-200">
-                <CardHeader>
-                  <div className="flex justify-between items-center">
-                    <CardTitle className="text-lg text-indigo-700">Deep Analysis</CardTitle>
-                    <Button variant="ghost" size="sm" onClick={() => setCrewResult(null)}>
-                      Dismiss
-                    </Button>
-                  </div>
-                  <CardDescription>
-                    Multi-agent analysis by Sentiment Analyst, Theme Synthesizer, and Validator
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="prose prose-sm max-w-none whitespace-pre-wrap text-gray-700">
-                    {crewResult.summary}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Agent Alerts for this Decision */}
             {decisionAlerts.length > 0 && (
               <Card>
@@ -696,11 +619,15 @@ export default function DecisionDetailPage() {
                   <div className="space-y-3">
                     {decisionAlerts.map((alert) => {
                       const agentIcons: Record<string, string> = {
-                        evidence_hunter: '\uD83D\uDD0D',
-                        decay_monitor: '\u23F0',
+                        strength_calculator: '\uD83D\uDCAA',
                         contradiction_detector: '\u26A1',
-                        analysis_crew: '\uD83E\uDDE0',
+                        segment_identifier: '\uD83C\uDFAF',
+                        session_analyzer: '\uD83D\uDD2C',
+                        brief_generator: '\uD83D\uDCCB',
+                        decay_monitor: '\u23F0',
                         competitor_monitor: '\uD83D\uDCCA',
+                        evidence_hunter: '\uD83D\uDD0D',
+                        analysis_crew: '\uD83E\uDDE0',
                       }
                       const alertColors: Record<string, string> = {
                         info: 'bg-blue-50 border-blue-200',
@@ -864,9 +791,62 @@ export default function DecisionDetailPage() {
                 {decision.external_ref && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">External</span>
-                    <span>{decision.external_ref}</span>
+                    {decision.external_url ? (
+                      <a href={decision.external_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                        {decision.external_ref}
+                      </a>
+                    ) : (
+                      <span>{decision.external_ref}</span>
+                    )}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Push to PM Tool */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm text-gray-500">Push to PM Tool</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => handlePush('linear')}
+                  disabled={pushingLinear}
+                >
+                  {pushingLinear ? 'Pushing...' : 'Push to Linear'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => handlePush('jira')}
+                  disabled={pushingJira}
+                >
+                  {pushingJira ? 'Pushing...' : 'Push to Jira'}
+                </Button>
+                {pushResult && (
+                  <div className={`text-xs p-2 rounded ${pushResult.error ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                    {pushResult.error
+                      ? pushResult.error
+                      : (
+                        <>
+                          Pushed to {pushResult.type}.{' '}
+                          {pushResult.url && (
+                            <a href={pushResult.url} target="_blank" rel="noopener noreferrer" className="underline">
+                              View
+                            </a>
+                          )}
+                        </>
+                      )
+                    }
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-400">
+                  <Link href="/settings/pm-tools" className="hover:underline">Configure integrations</Link>
+                </p>
               </CardContent>
             </Card>
           </div>

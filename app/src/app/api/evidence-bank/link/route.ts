@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { triggerAgentsOnEvidenceLink } from '@/lib/agent-triggers'
 
 // POST: Link evidence bank item to sticky note
 export async function POST(request: NextRequest) {
@@ -40,6 +41,18 @@ export async function POST(request: NextRequest) {
       .from('sticky_notes')
       .update({ has_evidence: true })
       .eq('id', stickyNoteId)
+
+    // Auto-trigger agents (fire-and-forget)
+    const { data: evidenceItem } = await supabase
+      .from('evidence_bank')
+      .select('workspace_id')
+      .eq('id', evidenceBankId)
+      .single()
+
+    if (evidenceItem?.workspace_id) {
+      triggerAgentsOnEvidenceLink(evidenceBankId, stickyNoteId, evidenceItem.workspace_id)
+        .catch(err => console.error('Agent trigger error (non-blocking):', err))
+    }
 
     return NextResponse.json({ link })
   } catch (error) {

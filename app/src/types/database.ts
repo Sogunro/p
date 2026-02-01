@@ -1033,8 +1033,18 @@ export type DecisionStatus = 'commit' | 'validate' | 'park'
 export type Decision = Database['public']['Tables']['decisions']['Row']
 export type EvidenceDecisionLink = Database['public']['Tables']['evidence_decision_links']['Row']
 
-// Phase E: AI Agent types
-export type AgentType = 'evidence_hunter' | 'decay_monitor' | 'contradiction_detector' | 'competitor_monitor' | 'analysis_crew'
+// Phase E: AI Agent types (7-agent architecture)
+export type AgentType =
+  | 'strength_calculator'      // Auto: pure logic evidence scoring
+  | 'contradiction_detector'   // Auto: conflict detection (Haiku)
+  | 'segment_identifier'       // Auto: user segment extraction (Haiku)
+  | 'session_analyzer'         // User-triggered: session analysis (Sonnet)
+  | 'brief_generator'          // User-triggered: executive brief (Sonnet)
+  | 'decay_monitor'            // Scheduled: stale evidence alerts
+  | 'competitor_monitor'       // Scheduled: market movement alerts
+  // Legacy types (for existing DB rows from original Phase E)
+  | 'evidence_hunter'
+  | 'analysis_crew'
 export type AlertType = 'info' | 'warning' | 'action_needed'
 export type AgentAlert = Database['public']['Tables']['agent_alerts']['Row']
 
@@ -1066,6 +1076,57 @@ export type WorkspaceRole = 'owner' | 'admin' | 'member'
 
 // Phase 4: Daily Insights Analysis types
 export type DailyInsightsAnalysis = Database['public']['Tables']['daily_insights_analysis']['Row']
+
+// Phase F: Discovery Brief + External Push types
+export interface DiscoveryBrief {
+  id: string
+  workspace_id: string
+  session_id: string | null
+  title: string
+  content: string
+  evidence_count: number
+  decision_count: number
+  key_themes: string[]
+  top_risks: string[]
+  share_token: string | null
+  is_public: boolean
+  generated_by: string | null
+  raw_response: Record<string, unknown> | null
+  created_at: string
+  updated_at: string
+}
+
+export type IntegrationType = 'linear' | 'jira'
+export type PushStatus = 'pending' | 'success' | 'failed'
+
+export interface ExternalIntegration {
+  id: string
+  workspace_id: string
+  integration_type: IntegrationType
+  api_key_encrypted: string | null
+  base_url: string | null
+  team_id: string | null
+  project_key: string | null
+  is_active: boolean
+  config: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface ExternalPush {
+  id: string
+  workspace_id: string
+  decision_id: string
+  integration_type: IntegrationType
+  external_id: string | null
+  external_url: string | null
+  external_status: string | null
+  push_status: PushStatus
+  error_message: string | null
+  pushed_by: string | null
+  created_at: string
+  updated_at: string
+}
 
 // Phase 4: Workspace Evidence Sources types
 export type WorkspaceEvidenceSources = Database['public']['Tables']['workspace_evidence_sources']['Row']

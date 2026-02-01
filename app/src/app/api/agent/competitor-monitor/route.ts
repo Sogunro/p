@@ -27,23 +27,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Agent service not configured' }, { status: 503 })
     }
 
-    const body = await request.json()
-    const { hypothesis, decision_id } = body
-
-    if (!hypothesis || !hypothesis.trim()) {
-      return NextResponse.json({ error: 'Hypothesis is required' }, { status: 400 })
-    }
-
-    const response = await fetch(`${EMBEDDING_SERVICE_URL}/agent/hunt`, {
+    const response = await fetch(`${EMBEDDING_SERVICE_URL}/agent/competitor-monitor`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(EMBEDDING_API_KEY ? { 'Authorization': `Bearer ${EMBEDDING_API_KEY}` } : {}),
       },
       body: JSON.stringify({
-        hypothesis,
         workspace_id: membership.workspace_id,
-        decision_id: decision_id || null,
       }),
     })
 
@@ -55,7 +46,7 @@ export async function POST(request: NextRequest) {
     const result = await response.json()
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Evidence Hunter error:', error)
-    return NextResponse.json({ error: 'Failed to run Evidence Hunter' }, { status: 500 })
+    console.error('Competitor Monitor error:', error)
+    return NextResponse.json({ error: 'Failed to run Competitor Monitor' }, { status: 500 })
   }
 }

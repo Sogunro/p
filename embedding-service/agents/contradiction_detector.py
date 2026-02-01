@@ -12,7 +12,7 @@ import json
 import numpy as np
 from anthropic import Anthropic
 
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
+from config import ANTHROPIC_API_KEY, CLAUDE_HAIKU_MODEL
 from db import get_supabase
 
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -157,7 +157,7 @@ async def _claude_contradiction_check(new_evidence: dict, similar_items: list, s
         )
 
     response = anthropic_client.messages.create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_HAIKU_MODEL,
         max_tokens=500,
         messages=[{
             "role": "user",
@@ -212,7 +212,7 @@ async def _analyze_contradiction(new_evidence: dict, contradiction: dict) -> str
     existing = contradiction["existing_evidence"]
 
     response = anthropic_client.messages.create(
-        model=CLAUDE_MODEL,
+        model=CLAUDE_HAIKU_MODEL,
         max_tokens=400,
         messages=[{
             "role": "user",

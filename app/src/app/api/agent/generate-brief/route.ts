@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'decision_id is required' }, { status: 400 })
     }
 
-    const response = await fetch(`${EMBEDDING_SERVICE_URL}/crew/analyze`, {
+    const response = await fetch(`${EMBEDDING_SERVICE_URL}/agent/generate-brief`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     const result = await response.json()
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Analysis Crew error:', error)
-    return NextResponse.json({ error: 'Failed to run Analysis Crew' }, { status: 500 })
+    console.error('Brief Generator error:', error)
+    return NextResponse.json({ error: 'Failed to run Brief Generator' }, { status: 500 })
   }
 }

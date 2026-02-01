@@ -1,7 +1,7 @@
 """
 Discovery OS - Embedding & Agent Service
 FastAPI service for generating text embeddings (fastembed/ONNX) and
-running AI agents (LangGraph + CrewAI).
+running AI agents (LangGraph). 7-agent architecture.
 Deployed on Railway, called by the Next.js app.
 """
 
@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     print("Shutting down embedding service.", flush=True)
 
 
-app = FastAPI(title="Discovery OS Embedding & Agent Service", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Discovery OS Embedding & Agent Service", version="3.0.0", lifespan=lifespan)
 
 
 def verify_api_key(authorization: Optional[str] = Header(None)):
@@ -94,17 +94,7 @@ class HealthResponse(BaseModel):
     error: Optional[str] = None
 
 
-# --- Agent Request / Response Models ---
-
-
-class HuntRequest(BaseModel):
-    hypothesis: str
-    workspace_id: str
-    decision_id: Optional[str] = None
-
-
-class DecayReportRequest(BaseModel):
-    workspace_id: str
+# --- Agent Request Models ---
 
 
 class ContradictionRequest(BaseModel):
@@ -112,8 +102,26 @@ class ContradictionRequest(BaseModel):
     workspace_id: str
 
 
-class CrewAnalyzeRequest(BaseModel):
+class SegmentIdentifyRequest(BaseModel):
+    evidence_id: str
+    workspace_id: str
+
+
+class SessionAnalyzeRequest(BaseModel):
+    session_id: str
+    workspace_id: str
+
+
+class BriefGenerateRequest(BaseModel):
     decision_id: str
+    workspace_id: str
+
+
+class DecayReportRequest(BaseModel):
+    workspace_id: str
+
+
+class CompetitorMonitorRequest(BaseModel):
     workspace_id: str
 
 
@@ -191,39 +199,10 @@ async def embed_batch(req: EmbedBatchRequest, authorization: Optional[str] = Hea
     )
 
 
-# --- Agent Endpoints ---
+# --- Agent Endpoints (7-Agent Architecture) ---
 
 
-@app.post("/agent/hunt")
-async def agent_hunt(req: HuntRequest, authorization: Optional[str] = Header(None)):
-    """Evidence Hunter — LangGraph agent that searches evidence bank for a hypothesis."""
-    verify_api_key(authorization)
-    try:
-        from agents.evidence_hunter import run_evidence_hunter
-        result = await run_evidence_hunter(
-            hypothesis=req.hypothesis,
-            workspace_id=req.workspace_id,
-            decision_id=req.decision_id,
-        )
-        return {"success": True, **result}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Evidence Hunter failed: {str(e)}")
-
-
-@app.post("/agent/decay-report")
-async def agent_decay_report(req: DecayReportRequest, authorization: Optional[str] = Header(None)):
-    """Decay Monitor — checks for stale evidence on active decisions."""
-    verify_api_key(authorization)
-    try:
-        from agents.decay_monitor import run_decay_monitor
-        result = await run_decay_monitor(workspace_id=req.workspace_id)
-        return {"success": True, **result}
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Decay Monitor failed: {str(e)}")
-
-
+# Agent 2: Contradiction Detector (Auto-triggered, Haiku)
 @app.post("/agent/detect-contradictions")
 async def agent_detect_contradictions(req: ContradictionRequest, authorization: Optional[str] = Header(None)):
     """Contradiction Detector — checks if evidence conflicts with existing evidence."""
@@ -240,20 +219,83 @@ async def agent_detect_contradictions(req: ContradictionRequest, authorization: 
         raise HTTPException(status_code=500, detail=f"Contradiction Detector failed: {str(e)}")
 
 
-@app.post("/crew/analyze")
-async def crew_analyze(req: CrewAnalyzeRequest, authorization: Optional[str] = Header(None)):
-    """Analysis Crew — CrewAI multi-agent deep analysis of a decision's evidence."""
+# Agent 3: Segment Identifier (Auto-triggered, Haiku)
+@app.post("/agent/segment-identify")
+async def agent_segment_identify(req: SegmentIdentifyRequest, authorization: Optional[str] = Header(None)):
+    """Segment Identifier — extracts user segment from evidence text."""
     verify_api_key(authorization)
     try:
-        from agents.analysis_crew import run_analysis_crew
-        result = await run_analysis_crew(
+        from agents.segment_identifier import run_segment_identifier
+        result = await run_segment_identifier(
+            evidence_id=req.evidence_id,
+            workspace_id=req.workspace_id,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Segment Identifier failed: {str(e)}")
+
+
+# Agent 4: Session Analyzer (User-triggered, Sonnet)
+@app.post("/agent/analyze-session")
+async def agent_analyze_session(req: SessionAnalyzeRequest, authorization: Optional[str] = Header(None)):
+    """Session Analyzer — ranks problems, checks constraints, generates recommendations."""
+    verify_api_key(authorization)
+    try:
+        from agents.session_analyzer import run_session_analyzer
+        result = await run_session_analyzer(
+            session_id=req.session_id,
+            workspace_id=req.workspace_id,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Session Analyzer failed: {str(e)}")
+
+
+# Agent 5: Brief Generator (User-triggered, Sonnet)
+@app.post("/agent/generate-brief")
+async def agent_generate_brief(req: BriefGenerateRequest, authorization: Optional[str] = Header(None)):
+    """Brief Generator — generates executive decision brief."""
+    verify_api_key(authorization)
+    try:
+        from agents.brief_generator import run_brief_generator
+        result = await run_brief_generator(
             decision_id=req.decision_id,
             workspace_id=req.workspace_id,
         )
         return {"success": True, **result}
     except Exception as e:
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Analysis Crew failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Brief Generator failed: {str(e)}")
+
+
+# Agent 6: Decay Monitor (Scheduled daily, pure logic)
+@app.post("/agent/decay-report")
+async def agent_decay_report(req: DecayReportRequest, authorization: Optional[str] = Header(None)):
+    """Decay Monitor — checks for stale evidence on active decisions and validating notes."""
+    verify_api_key(authorization)
+    try:
+        from agents.decay_monitor import run_decay_monitor
+        result = await run_decay_monitor(workspace_id=req.workspace_id)
+        return {"success": True, **result}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Decay Monitor failed: {str(e)}")
+
+
+# Agent 7: Competitor Monitor (Scheduled weekly, Haiku)
+@app.post("/agent/competitor-monitor")
+async def agent_competitor_monitor(req: CompetitorMonitorRequest, authorization: Optional[str] = Header(None)):
+    """Competitor Monitor — scans for competitor feature releases."""
+    verify_api_key(authorization)
+    try:
+        from agents.competitor_monitor import run_competitor_monitor
+        result = await run_competitor_monitor(workspace_id=req.workspace_id)
+        return {"success": True, **result}
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Competitor Monitor failed: {str(e)}")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 # Discovery OS — Development Plan
 
-**Last updated:** 2026-01-31 (Phase E complete)
-**Spec coverage:** ~72% built → targeting 100% across 8 phases
-**Current DB tables:** 28 | **API routes:** 34 | **Pages:** 19
+**Last updated:** 2026-01-31 (Phase F complete, Agent Architecture v2)
+**Spec coverage:** ~85% built → targeting 100% across 8 phases
+**Current DB tables:** 31 | **API routes:** 44 | **Pages:** 23
 
 ---
 
@@ -14,120 +14,67 @@
 | B | Decision Records MVP | COMPLETE | Decisions table, CRUD, log page, detail page, executive brief, gate logic, override mechanic |
 | C | Enhanced Canvas | COMPLETE | Section types, sort/filter, constraint indicators, source diversity, unvalidated warnings |
 | D | Vector Search + Enrichment | COMPLETE | pgvector, embeddings, similarity search, Python service, smart search UI |
-| E | AI Agents | COMPLETE | Evidence Hunter, Decay Monitor, Contradiction Detector, Analysis Crew |
-| F | Discovery Brief + External Push | UP NEXT | Brief generation, Linear/Jira integration |
+| E | AI Agents (v2) | COMPLETE | 7-agent architecture, auto-triggers, Haiku/Sonnet split |
+| F | Discovery Brief + External Push | COMPLETE | Brief generation, Linear/Jira push, shareable links |
 | G | Outcomes + Calibration | PLANNED | Outcomes tracking, calibration dashboard |
 | H | Polish + Portfolio | PLANNED | Demo data, loading states, architecture docs |
 
 ---
 
-## AI Agent System — Architecture Overview
+## AI Agent System — Architecture v2
 
-The spec defines 4 AI agents that automate the grunt work so PMs can focus on judgment. These agents run on a **Python FastAPI service (Railway)** using **LangGraph** for orchestration and **CrewAI** for multi-agent analysis, with **n8n** handling triggers and external integrations.
+7 specialized agents running on **Python FastAPI (Railway)** with **Haiku/Sonnet model split** for cost optimization. Auto-triggered agents fire on evidence linking, user-triggered agents run on button click, scheduled agents run via n8n cron.
 
 ### Agent Layer Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         NEXT.JS APP                             │
-│  /api/agent/validate → Trigger agent pipeline                   │
-│  /api/agent/analyze  → Trigger analysis crew                    │
-└───────────────────────────┬─────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                         NEXT.JS APP                              │
+│  Auto-trigger: /api/evidence-bank/link → agent-triggers.ts       │
+│  User-trigger: /api/agent/analyze-session, /generate-brief       │
+│  Proxy routes: /api/agent/* → Railway                            │
+└───────────────────────────┬──────────────────────────────────────┘
                             │
                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         n8n                                     │
-│  • Webhook trigger → call Python agent service                  │
-│  • Scheduled evidence refresh → update embeddings               │
-│  • New evidence → trigger embedding generation                  │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    PYTHON SERVICE (Railway)                      │
-│                        FastAPI                                   │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  LangGraph (Orchestrator + Evidence Hunter)               │  │
-│  │  • POST /agent/orchestrate — Main entry point             │  │
-│  │  • POST /agent/hunt — Evidence hunting                    │  │
-│  │  • POST /search — Semantic search                         │  │
-│  │  • POST /embed — Generate embeddings                      │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  CrewAI (Analysis Crew)                                   │  │
-│  │  • Sentiment Analyst — classifies evidence tone           │  │
-│  │  • Theme Synthesizer — clusters and summarizes            │  │
-│  │  • Validator — scores confidence, finds gaps              │  │
-│  │  • POST /crew/analyze — Run analysis crew                 │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  Local Models: all-MiniLM-L6-v2 (embeddings)                    │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                    PYTHON SERVICE (Railway)                       │
+│                    FastAPI v3.0.0                                 │
+│                                                                   │
+│  AUTO-TRIGGERED (on evidence link):                               │
+│  ├─ Strength Calculator  — TypeScript (local, no LLM)            │
+│  ├─ Contradiction Detector — Claude Haiku (~$0.0003/call)        │
+│  └─ Segment Identifier    — Claude Haiku (~$0.0003/call)         │
+│                                                                   │
+│  USER-TRIGGERED (button click):                                   │
+│  ├─ Session Analyzer — Claude Sonnet (~$0.01-0.05/call)          │
+│  └─ Brief Generator  — Claude Sonnet (~$0.01-0.05/call)          │
+│                                                                   │
+│  SCHEDULED (n8n cron):                                            │
+│  ├─ Decay Monitor      — Claude Sonnet (daily)                   │
+│  └─ Competitor Monitor — Claude Haiku (weekly, P3 stub)          │
+│                                                                   │
+│  Local Models: all-MiniLM-L6-v2 (embeddings)                     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### The 4 Agents
+### The 7 Agents
 
-| # | Agent | Trigger | Autonomy | Priority | Depends On |
-|---|-------|---------|----------|----------|------------|
-| 1 | **Evidence Hunter** | Idea marked "needs validation" | Level 3 (Act + Notify) | P1 | Phase D (vector search) |
-| 2 | **Decay Monitor** | Daily schedule (6 AM) | Level 2 (Alert only) | P2 | Phase A (recency), Phase B (decisions) |
-| 3 | **Contradiction Detector** | New evidence ingested | Level 2 (Alert only) | P2 | Phase D (embeddings + similarity) |
-| 4 | **Competitor Monitor** | Feature spec created / Weekly | Level 2 (Alert only) | P3 | Phase B (decisions), Phase F (briefs) |
+| # | Agent | Trigger | Model | Cost/Call |
+|---|-------|---------|-------|-----------|
+| 1 | **Strength Calculator** | Auto (evidence link) | None (pure logic) | $0 |
+| 2 | **Contradiction Detector** | Auto (evidence link) | Haiku | ~$0.0003 |
+| 3 | **Segment Identifier** | Auto (evidence link) | Haiku | ~$0.0003 |
+| 4 | **Session Analyzer** | User button | Sonnet | ~$0.01-0.05 |
+| 5 | **Brief Generator** | User button | Sonnet | ~$0.01-0.05 |
+| 6 | **Decay Monitor** | Daily cron | Sonnet | ~$0.01 |
+| 7 | **Competitor Monitor** | Weekly cron (stub) | Haiku | ~$0.0003 |
 
-### Agent 1: Evidence Hunter (P1)
-**Purpose:** Automate evidence gathering when an idea needs validation.
-
-**Workflow:**
-1. Receive hypothesis text + keywords
-2. Parallel search: Slack, Intercom, Notion, PostHog via source APIs
-3. Embed hypothesis + each result
-4. Filter by semantic similarity (> 0.7 threshold)
-5. For each relevant result → ingest as new evidence
-6. Notify PM: "Found 8 pieces of evidence... Confidence updated: 34% → 62%"
-
-**Implementation:** LangGraph (stateful graph with generate_queries → search_vector → filter_rank nodes, conditional looping if insufficient results)
-
-**n8n trigger:** Supabase webhook on hypothesis.status = 'needs_validation'
-
-### Agent 2: Decay Monitor (P2)
-**Purpose:** Proactively identify hypotheses at risk due to stale evidence.
-
-**Workflow:**
-1. Query all active hypotheses daily
-2. For each: get linked evidence, calculate days since most recent, check confidence trend
-3. Flag if: no evidence in 21+ days, OR confidence declining 3+ days, OR decision scheduled within 7 days + confidence < 60%
-4. Generate daily digest with attention-needed + healthy sections
-5. Send via Slack/Email
-
-**Implementation:** Scheduled n8n workflow → queries Supabase → generates report
-
-### Agent 3: Contradiction Detector (P2)
-**Purpose:** Flag when new evidence conflicts with existing evidence.
-
-**Workflow:**
-1. New evidence arrives with embedding
-2. Search for similar evidence (similarity > 0.8)
-3. Compare sentiment, segment, source for each similar piece
-4. If sentiment mismatch on same topic from different users → alert
-5. Show: conflicting pieces, possible explanations, action buttons
-
-**Implementation:** Triggered by evidence ingestion webhook → LangGraph analysis
-
-### Agent 4: Competitor & Market Monitor (P3)
-**Purpose:** Track competitor releases for features in development.
-
-**Sources:** Competitor changelogs, Product Hunt, tech news, G2/Capterra, social media
-
-**Workflow:**
-1. Feature spec created → extract keywords
-2. Weekly scan: competitor sites, Product Hunt, news
-3. LangGraph analyzes: relevant? direct competitor? how similar?
-4. If match: alert with competitor details + suggested actions
-5. Update Decision Record with market context
-
-**Implementation:** n8n scheduled workflow → web scraping → LangGraph relevance analysis
+**Key design decisions:**
+- **No CrewAI** — removed entirely. All agents use direct Anthropic SDK calls.
+- **Haiku for simple tasks** — segment classification, keyword extraction, contradiction detection
+- **Sonnet for complex reasoning** — session analysis, brief generation, decay reports
+- **Auto-trigger from server** — `/api/evidence-bank/link` fires 3 agents in parallel (fire-and-forget)
+- **Strength Calculator in TypeScript** — reuses existing `evidence-strength.ts`, no LLM needed
 
 ---
 
@@ -357,112 +304,171 @@ The spec defines 4 AI agents that automate the grunt work so PMs can focus on ju
 
 ---
 
-## Phase E: AI Agents — COMPLETE
+## Phase E: AI Agents (v2 Architecture) — COMPLETE
 
-**Goal:** Automate evidence gathering, staleness detection, contradiction flagging, and deep analysis. This is the intelligence layer.
+**Goal:** 7-agent system with auto-triggers, Haiku/Sonnet model split, no CrewAI dependency.
+
+### Architecture Transition (v1 → v2)
+
+| v1 Agent | Action | v2 Agent |
+|----------|--------|----------|
+| Evidence Hunter | **REMOVED** | _(replaced by auto-trigger flow)_ |
+| Analysis Crew (CrewAI) | **REMOVED** | _(replaced by Session Analyzer + Brief Generator)_ |
+| Contradiction Detector | **KEPT, switched to Haiku** | Auto-triggered on evidence link |
+| Decay Monitor | **KEPT + MODIFIED** | Also monitors sticky notes |
+| _(none)_ | **ADDED** | Strength Calculator (pure logic, no LLM) |
+| _(none)_ | **ADDED** | Segment Identifier (Claude Haiku) |
+| _(none)_ | **ADDED** | Competitor Monitor (Claude Haiku, weekly stub) |
+| _(none)_ | **ADDED** | Session Analyzer (Claude Sonnet) |
+| _(none)_ | **ADDED** | Brief Generator (Claude Sonnet) |
 
 ### What was built
 
-**SQL Migration** (`supabase_phase_e_agents.sql`):
-- `agent_alerts` table (#28) with RLS policies and indexes
-- Supports 5 agent types: evidence_hunter, decay_monitor, contradiction_detector, competitor_monitor, analysis_crew
-- Alert types: info, warning, action_needed
-- JSONB metadata for agent-specific structured data
+**SQL Migrations**:
+- `supabase_phase_e_agents.sql` — `agent_alerts` table (#28) with RLS
+- `supabase_agent_architecture_update.sql` — Updated agent_type CHECK constraint for 7 new + 2 legacy types
 
-**Python Service — New Dependencies** (`embedding-service/requirements.txt`):
-- langgraph, langchain, langchain-anthropic, crewai, anthropic, supabase, httpx
+**Python Service (Railway) — 5 Agent Modules**:
+- `embedding-service/agents/contradiction_detector.py` — Switched to Haiku model
+- `embedding-service/agents/segment_identifier.py` — NEW: Haiku-based user segment classification (Enterprise/Mid-market/SMB/Consumer/Internal)
+- `embedding-service/agents/session_analyzer.py` — NEW: Sonnet-based session analysis with commit/validate/park recommendations
+- `embedding-service/agents/brief_generator.py` — NEW: Sonnet-based executive decision briefs with evidence breakdown
+- `embedding-service/agents/competitor_monitor.py` — NEW: Haiku keyword extraction stub (web search deferred)
+- `embedding-service/agents/decay_monitor.py` — MODIFIED: Now monitors both committed decisions AND validating sticky notes
+- `embedding-service/config.py` — Added `CLAUDE_HAIKU_MODEL` + `CLAUDE_SONNET_MODEL`
+- `embedding-service/main.py` — Version 3.0.0, 6 new endpoints, removed old hunt/analyze endpoints
+- `embedding-service/requirements.txt` — Removed crewai dependency
 
-**Python Service — Infrastructure**:
-- `embedding-service/config.py` — Shared env config (Supabase, Anthropic, model settings)
-- `embedding-service/db.py` — Supabase client helper using service role key
+**Auto-Trigger Flow**:
+- `app/src/lib/agent-triggers.ts` — Fires 3 agents in parallel on evidence link: Strength Calculator (local), Contradiction Detector (Railway), Segment Identifier (Railway)
+- `app/src/app/api/evidence-bank/link/route.ts` — Modified to call `triggerAgentsOnEvidenceLink()` fire-and-forget
 
-**Agent 1: Evidence Hunter** (`embedding-service/agents/evidence_hunter.py`):
-- LangGraph agent with 5 nodes: generate_queries → search_vector → filter_rank → summarize → store_results
-- Conditional looping: if < 3 results and < 2 iterations, refines queries and searches again
-- Uses `search_evidence()` RPC for vector similarity search
-- Auto-links found evidence to decisions, recalculates strength
-- Endpoint: `POST /agent/hunt`
-
-**Agent 2: Decay Monitor** (`embedding-service/agents/decay_monitor.py`):
-- Sequential flow checking for stale evidence on active decisions
-- Flag conditions: evidence >21 days old, >50% older than 90 days, strength <40 with commit status
-- Claude generates markdown digest report
-- Endpoint: `POST /agent/decay-report`
-- n8n: Daily scheduled trigger
-
-**Agent 3: Contradiction Detector** (`embedding-service/agents/contradiction_detector.py`):
-- Searches similar evidence via pgvector (similarity >0.75)
-- Sentiment-based contradiction detection from independent sources
-- Claude semantic analysis fallback when sentiment data missing
-- Endpoint: `POST /agent/detect-contradictions`
-- Fire-and-forget trigger after evidence embedding
-
-**Agent 4: Analysis Crew** (`embedding-service/agents/analysis_crew.py`):
-- CrewAI with 3 agents: Sentiment Analyst, Theme Synthesizer, Validator
-- Sequential process: sentiment → themes → validation
-- Claude generates executive summary from crew outputs
-- Endpoint: `POST /crew/analyze`
-
-**Note:** Competitor & Market Monitor (Agent 4 from original plan) was replaced with the CrewAI Analysis Crew as a higher-priority deliverable. Competitor Monitor can be added in a future phase.
-
-**Next.js API Routes**:
-- `POST /api/agent/hunt` — Evidence Hunter trigger
-- `POST /api/agent/decay-report` — Decay Monitor trigger
-- `POST /api/agent/detect-contradictions` — Contradiction Detector trigger
-- `POST /api/agent/analyze` — CrewAI Analysis trigger
+**Next.js API Proxy Routes** (6 total):
+- `POST /api/agent/detect-contradictions` — Contradiction Detector
+- `POST /api/agent/segment-identify` — Segment Identifier
+- `POST /api/agent/analyze-session` — Session Analyzer
+- `POST /api/agent/generate-brief` — Brief Generator
+- `POST /api/agent/decay-report` — Decay Monitor
+- `POST /api/agent/competitor-monitor` — Competitor Monitor
 - `GET/PATCH /api/agent/alerts` — Alert listing and management
 
 **UI Updates**:
-- Dashboard: Agent Activity card showing latest 5 alerts with type icons
-- Decision detail: "Hunt Evidence" button (status = validate/park), "Deep Analysis" button (2+ evidence)
-- Decision detail: Agent results display sections and decision-related alerts
+- Decision detail: Removed "Hunt Evidence" + "Deep Analysis" buttons, replaced with "Generate Brief" calling Railway
+- Decision detail: Updated agent icons for all 7 agent types + 2 legacy
+- Dashboard: Updated agent icons for all 7 agent types + 2 legacy
+
+### Files created (v2 additions)
+| # | File | Purpose |
+|---|------|---------|
+| 1 | `supabase_agent_architecture_update.sql` | Agent type constraint migration |
+| 2 | `embedding-service/agents/segment_identifier.py` | Segment Identifier (Haiku) |
+| 3 | `embedding-service/agents/session_analyzer.py` | Session Analyzer (Sonnet) |
+| 4 | `embedding-service/agents/brief_generator.py` | Brief Generator (Sonnet) |
+| 5 | `embedding-service/agents/competitor_monitor.py` | Competitor Monitor stub (Haiku) |
+| 6 | `app/src/lib/agent-triggers.ts` | Auto-trigger orchestration |
+| 7 | `app/src/app/api/agent/segment-identify/route.ts` | Segment Identifier proxy |
+| 8 | `app/src/app/api/agent/analyze-session/route.ts` | Session Analyzer proxy |
+| 9 | `app/src/app/api/agent/generate-brief/route.ts` | Brief Generator proxy |
+| 10 | `app/src/app/api/agent/competitor-monitor/route.ts` | Competitor Monitor proxy |
+
+### Files deleted (v1 → v2)
+| # | File | Reason |
+|---|------|--------|
+| 1 | `embedding-service/agents/evidence_hunter.py` | Agent removed |
+| 2 | `embedding-service/agents/analysis_crew.py` | CrewAI removed |
+| 3 | `app/src/app/api/agent/hunt/route.ts` | Endpoint removed |
+| 4 | `app/src/app/api/agent/analyze/route.ts` | Endpoint removed |
+
+### Files modified (v2)
+| # | File | Changes |
+|---|------|---------|
+| 1 | `embedding-service/requirements.txt` | Removed crewai |
+| 2 | `embedding-service/main.py` | Removed old endpoints, added 6 new, v3.0.0 |
+| 3 | `embedding-service/config.py` | Added CLAUDE_HAIKU_MODEL + CLAUDE_SONNET_MODEL |
+| 4 | `embedding-service/Dockerfile` | Removed build-essential |
+| 5 | `embedding-service/agents/contradiction_detector.py` | Switched to Haiku |
+| 6 | `embedding-service/agents/decay_monitor.py` | Added sticky note monitoring |
+| 7 | `app/src/types/database.ts` | 7 new + 2 legacy agent types |
+| 8 | `app/src/app/api/evidence-bank/link/route.ts` | Added auto-trigger call |
+| 9 | `app/src/app/decisions/[id]/page.tsx` | Removed old buttons, new agent icons |
+| 10 | `app/src/app/dashboard/page.tsx` | Updated agent icons |
+
+### Deployment steps
+1. Run `supabase_agent_architecture_update.sql` in Supabase SQL Editor
+2. Deploy Python service to Railway (crewai removed, new agents added)
+3. Deploy Next.js to Vercel
+4. Set up n8n: Daily trigger for Decay Monitor, Weekly trigger for Competitor Monitor
+
+---
+
+## Phase F: Discovery Brief + External Push — COMPLETE
+
+**Goal:** Pre-session intelligence, shareable briefs, and external PM tool integration (Linear + Jira).
+
+### What was built
+
+**SQL Migration** (`supabase_phase_f_discovery_brief_push.sql`):
+- `discovery_briefs` table (#29) — workspace-wide or session-specific briefs with share tokens
+- `external_integrations` table (#30) — Linear/Jira config with encrypted API keys
+- `external_pushes` table (#31) — Push history with status tracking
+- RLS policies for all 3 tables (workspace members + public read for shared briefs)
+
+**Discovery Brief API**:
+- `GET /api/discovery-brief` — List briefs for workspace (optional session filter)
+- `POST /api/discovery-brief` — Generate brief using Claude Sonnet (synthesizes evidence + decisions + agent alerts)
+- `GET/PATCH/DELETE /api/discovery-brief/[id]` — Individual brief CRUD
+- `POST /api/discovery-brief/[id]/share` — Generate share token, make public
+- `DELETE /api/discovery-brief/[id]/share` — Revoke sharing
+
+**Shareable Brief Links**:
+- `/brief/[token]` — Public read-only page (no auth required)
+- Renders title, date, evidence count, decision count, key themes, full content
+
+**Linear Integration**:
+- `GET/POST/DELETE /api/integrations/linear` — CRUD for Linear config
+- `POST /api/integrations/linear/push` — Push decision as Linear issue via GraphQL API
+
+**Jira Integration**:
+- `GET/POST/DELETE /api/integrations/jira` — CRUD for Jira config
+- `POST /api/integrations/jira/push` — Push decision as Jira ticket via REST API v3
+
+**UI Pages**:
+- `/discovery-brief` — Brief list with card grid, generate button, share/revoke/delete
+- `/settings/pm-tools` — Linear + Jira configuration (API key, team/project, enable/disable)
+- Decision detail: "Push to Linear" / "Push to Jira" buttons with result display
+- Dashboard nav: Added "Briefs" and "PM Tools" links
+
+**TypeScript Types**:
+- `DiscoveryBrief`, `ExternalIntegration`, `ExternalPush` interfaces
+- `IntegrationType` = 'linear' | 'jira'
+- `PushStatus` = 'pending' | 'success' | 'failed'
 
 ### Files created
 | # | File | Purpose |
 |---|------|---------|
-| 1 | `supabase_phase_e_agents.sql` | SQL migration for agent_alerts table |
-| 2 | `embedding-service/config.py` | Shared env config |
-| 3 | `embedding-service/db.py` | Supabase client helper |
-| 4 | `embedding-service/agents/__init__.py` | Package init |
-| 5 | `embedding-service/agents/evidence_hunter.py` | LangGraph Evidence Hunter |
-| 6 | `embedding-service/agents/decay_monitor.py` | Decay Monitor |
-| 7 | `embedding-service/agents/contradiction_detector.py` | Contradiction Detector |
-| 8 | `embedding-service/agents/analysis_crew.py` | CrewAI Analysis Crew |
-| 9 | `app/src/app/api/agent/hunt/route.ts` | Evidence Hunter API route |
-| 10 | `app/src/app/api/agent/decay-report/route.ts` | Decay Report API route |
-| 11 | `app/src/app/api/agent/detect-contradictions/route.ts` | Contradiction API route |
-| 12 | `app/src/app/api/agent/analyze/route.ts` | CrewAI Analysis API route |
-| 13 | `app/src/app/api/agent/alerts/route.ts` | Alert management API route |
+| 1 | `supabase_phase_f_discovery_brief_push.sql` | 3 tables + RLS |
+| 2 | `app/src/app/api/discovery-brief/route.ts` | Brief list + generate |
+| 3 | `app/src/app/api/discovery-brief/[id]/route.ts` | Brief CRUD |
+| 4 | `app/src/app/api/discovery-brief/[id]/share/route.ts` | Shareable links |
+| 5 | `app/src/app/brief/[token]/page.tsx` | Public brief viewer |
+| 6 | `app/src/app/discovery-brief/page.tsx` | Brief list page |
+| 7 | `app/src/app/api/integrations/linear/route.ts` | Linear config |
+| 8 | `app/src/app/api/integrations/linear/push/route.ts` | Linear push |
+| 9 | `app/src/app/api/integrations/jira/route.ts` | Jira config |
+| 10 | `app/src/app/api/integrations/jira/push/route.ts` | Jira push |
+| 11 | `app/src/app/settings/pm-tools/page.tsx` | PM Tools settings |
 
 ### Files modified
 | # | File | Changes |
 |---|------|---------|
-| 1 | `embedding-service/requirements.txt` | Added langgraph, crewai, anthropic, supabase deps |
-| 2 | `embedding-service/main.py` | Added 4 agent endpoints, updated version to 2.0.0 |
-| 3 | `embedding-service/.env.example` | Added ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY |
-| 4 | `app/src/types/database.ts` | Added agent_alerts types, AgentType, AlertType |
-| 5 | `app/src/app/dashboard/page.tsx` | Added Agent Activity card |
-| 6 | `app/src/app/decisions/[id]/page.tsx` | Added Hunt + Deep Analysis buttons, results display, alerts |
+| 1 | `app/src/types/database.ts` | Added DiscoveryBrief, ExternalIntegration, ExternalPush types |
+| 2 | `app/src/app/decisions/[id]/page.tsx` | Added "Push to..." section |
+| 3 | `app/src/app/dashboard/page.tsx` | Added Briefs + PM Tools nav links |
 
 ### Deployment steps
-1. Run `supabase_phase_e_agents.sql` in Supabase SQL Editor
-2. Set Railway env vars: `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-3. Deploy Python service to Railway (new deps will install)
-4. Deploy Next.js to Vercel (automatic on push)
-5. Set up n8n daily workflow for Decay Monitor
-
----
-
-## Phase F: Discovery Brief + External Push — PLANNED
-
-**Goal:** Pre-session intelligence and external PM tool integration
-
-### What to build
-- Discovery Brief generation API (Claude prompt using workspace evidence + decision history)
-- Brief display UI (shown before session starts)
-- Linear integration (API key setup in workspace settings, push decision API, field mapping UI)
-- Jira integration (similar to Linear)
-- Shareable brief links (public read-only URLs)
+1. Run `supabase_phase_f_discovery_brief_push.sql` in Supabase SQL Editor
+2. Deploy Next.js to Vercel
+3. Set `ANTHROPIC_API_KEY` on Vercel (for brief generation)
 
 ---
 
@@ -504,31 +510,28 @@ The spec defines 4 AI agents that automate the grunt work so PMs can focus on ju
 |-------|------|---------|
 | **Frontend** | Next.js 16 + TypeScript | UI + API routes |
 | **Database** | Supabase PostgreSQL + pgvector | Structured data + vector search + RLS |
-| **AI/LLM** | Claude Sonnet (Anthropic SDK) | Analysis, synthesis, reasoning |
+| **AI/LLM** | Claude Sonnet + Haiku (Anthropic SDK) | Complex reasoning (Sonnet) + simple tasks (Haiku) |
 | **Embeddings** | all-MiniLM-L6-v2 (local on Railway) | RAG vector generation |
-| **Agent Frameworks** | LangGraph + CrewAI | Multi-agent orchestration |
-| **Integration Orchestration** | n8n | External data fetching, triggers, webhooks |
-| **Python Service** | FastAPI on Railway | Agent execution environment |
+| **Integration Orchestration** | n8n | Scheduled triggers (decay monitor, competitor monitor) |
+| **Python Service** | FastAPI v3.0.0 on Railway | 7-agent execution environment |
+| **External Integrations** | Linear GraphQL + Jira REST v3 | PM tool push |
 | **Deployment** | Vercel (frontend) + Railway (Python) | Hosting |
 | **Styling** | Tailwind CSS + shadcn/ui | Component library |
 
-### Framework Responsibilities
+### Model Usage
 
-| Framework | Role |
-|-----------|------|
-| **n8n** | External integrations (Slack, Notion, Mixpanel), triggers, webhooks, calls Python service |
-| **LangGraph** | Core agent orchestration — Orchestrator Agent, Evidence Hunter Agent |
-| **CrewAI** | Analysis crew — Sentiment Analyst, Theme Synthesizer, Validator working as team |
-| **Claude (direct)** | Quick analysis fallback, executive brief generation, session analysis |
+| Model | Cost | Used By |
+|-------|------|---------|
+| **Claude Haiku** | ~$0.0003/call | Contradiction Detector, Segment Identifier, Competitor Monitor |
+| **Claude Sonnet** | ~$0.01-0.05/call | Session Analyzer, Brief Generator, Decay Monitor, Discovery Briefs |
+| **all-MiniLM-L6-v2** | $0 (local) | Embedding generation for vector search |
 
 ---
 
-## Quick Reference: Current Database (25 tables)
+## Quick Reference: Current Database (31 tables)
 
-profiles, templates, template_sections, sessions, session_objectives, session_checklist_items, constraints, session_constraints, sections, sticky_notes, evidence, sticky_note_links, session_analyses, workspaces, workspace_members, evidence_bank, sticky_note_evidence_links, insights_feed, workspace_settings, daily_insights_analysis, workspace_evidence_sources, workspace_invites, validation_workflows, validation_workflow_history, **confidence_history**
+profiles, templates, template_sections, sessions, session_objectives, session_checklist_items, constraints, session_constraints, sections, sticky_notes, evidence, sticky_note_links, session_analyses, workspaces, workspace_members, evidence_bank, sticky_note_evidence_links, insights_feed, workspace_settings, daily_insights_analysis, workspace_evidence_sources, workspace_invites, validation_workflows, validation_workflow_history, confidence_history, decisions, evidence_decision_links, agent_alerts, **discovery_briefs**, **external_integrations**, **external_pushes**
 
 ### Tables coming in future phases
-- `decisions` (Phase B)
-- `evidence_hypothesis_links` (Phase B)
 - `outcomes` (Phase G)
 - `pm_calibration` (Phase G)

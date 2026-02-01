@@ -82,6 +82,11 @@ export default async function DashboardPage() {
                   Insights
                 </Button>
               </Link>
+              <Link href="/discovery-brief">
+                <Button variant="ghost" size="sm">
+                  Briefs
+                </Button>
+              </Link>
               <Link href="/settings/team">
                 <Button variant="ghost" size="sm">
                   Team
@@ -90,6 +95,11 @@ export default async function DashboardPage() {
               <Link href="/settings/evidence-weights">
                 <Button variant="ghost" size="sm">
                   Weights
+                </Button>
+              </Link>
+              <Link href="/settings/pm-tools">
+                <Button variant="ghost" size="sm">
+                  PM Tools
                 </Button>
               </Link>
               <Link href="/settings/constraints">
@@ -171,11 +181,15 @@ export default async function DashboardPage() {
                 <div className="space-y-3">
                   {agentAlerts.map((alert) => {
                     const agentIcons: Record<string, string> = {
-                      evidence_hunter: '\uD83D\uDD0D',
-                      decay_monitor: '\u23F0',
+                      strength_calculator: '\uD83D\uDCAA',
                       contradiction_detector: '\u26A1',
-                      analysis_crew: '\uD83E\uDDE0',
+                      segment_identifier: '\uD83C\uDFAF',
+                      session_analyzer: '\uD83D\uDD2C',
+                      brief_generator: '\uD83D\uDCCB',
+                      decay_monitor: '\u23F0',
                       competitor_monitor: '\uD83D\uDCCA',
+                      evidence_hunter: '\uD83D\uDD0D',
+                      analysis_crew: '\uD83E\uDDE0',
                     }
                     const alertColors: Record<string, string> = {
                       info: 'bg-blue-50 border-blue-200',
