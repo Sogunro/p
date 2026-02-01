@@ -49,10 +49,10 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const [showAnalysisModal, setShowAnalysisModal] = useState(false)
   const [analysisData, setAnalysisData] = useState<AnalysisData | null>(null)
   const [hasExistingAnalysis, setHasExistingAnalysis] = useState(false)
-  // Collapsible context panels
-  const [objectivesExpanded, setObjectivesExpanded] = useState(false)
-  const [checklistExpanded, setChecklistExpanded] = useState(false)
-  const [constraintsExpanded, setConstraintsExpanded] = useState(false)
+  // Collapsible context panels — accordion (only one open at a time)
+  const [expandedPanel, setExpandedPanel] = useState<'objectives' | 'checklist' | 'constraints' | null>(null)
+  const togglePanel = (panel: 'objectives' | 'checklist' | 'constraints') =>
+    setExpandedPanel(prev => prev === panel ? null : panel)
   const [editingObjectiveId, setEditingObjectiveId] = useState<string | null>(null)
   const [objectiveEditValue, setObjectiveEditValue] = useState('')
   const [newObjectiveText, setNewObjectiveText] = useState('')
@@ -1076,31 +1076,31 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         {/* Panel Toggle Buttons */}
         <div className="flex items-center gap-1 px-4 py-1.5">
           <button
-            onClick={() => setObjectivesExpanded(!objectivesExpanded)}
+            onClick={() => togglePanel('objectives')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-              objectivesExpanded ? 'bg-amber-100 text-amber-800' : 'hover:bg-muted text-muted-foreground'
+              expandedPanel === 'objectives' ? 'bg-amber-100 text-amber-800' : 'hover:bg-muted text-muted-foreground'
             }`}
           >
             Objectives ({session.session_objectives.length})
-            <span className="text-[10px]">{objectivesExpanded ? '\u25B2' : '\u25BC'}</span>
+            <span className="text-[10px]">{expandedPanel === 'objectives' ? '\u25B2' : '\u25BC'}</span>
           </button>
           <button
-            onClick={() => setChecklistExpanded(!checklistExpanded)}
+            onClick={() => togglePanel('checklist')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-              checklistExpanded ? 'bg-blue-100 text-blue-800' : 'hover:bg-muted text-muted-foreground'
+              expandedPanel === 'checklist' ? 'bg-blue-100 text-blue-800' : 'hover:bg-muted text-muted-foreground'
             }`}
           >
             Checklist ({session.session_checklist_items.filter(i => i.is_checked).length}/{session.session_checklist_items.length})
-            <span className="text-[10px]">{checklistExpanded ? '\u25B2' : '\u25BC'}</span>
+            <span className="text-[10px]">{expandedPanel === 'checklist' ? '\u25B2' : '\u25BC'}</span>
           </button>
           <button
-            onClick={() => setConstraintsExpanded(!constraintsExpanded)}
+            onClick={() => togglePanel('constraints')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-              constraintsExpanded ? 'bg-purple-100 text-purple-800' : 'hover:bg-muted text-muted-foreground'
+              expandedPanel === 'constraints' ? 'bg-purple-100 text-purple-800' : 'hover:bg-muted text-muted-foreground'
             }`}
           >
             Constraints ({session.session_constraints.length})
-            <span className="text-[10px]">{constraintsExpanded ? '\u25B2' : '\u25BC'}</span>
+            <span className="text-[10px]">{expandedPanel === 'constraints' ? '\u25B2' : '\u25BC'}</span>
           </button>
 
           {/* Stats — pushed to right */}
@@ -1115,7 +1115,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         </div>
 
         {/* Expanded: Objectives */}
-        {objectivesExpanded && (
+        {expandedPanel === 'objectives' && (
           <div className="border-t bg-amber-50/50 px-4 py-3">
             <div className="space-y-1.5 max-w-2xl">
               {session.session_objectives
@@ -1177,7 +1177,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         )}
 
         {/* Expanded: Checklist */}
-        {checklistExpanded && (
+        {expandedPanel === 'checklist' && (
           <div className="border-t bg-blue-50/30 px-4 py-3">
             <div className="space-y-1.5 max-w-2xl">
               {session.session_checklist_items
@@ -1202,7 +1202,7 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
         )}
 
         {/* Expanded: Constraints */}
-        {constraintsExpanded && (
+        {expandedPanel === 'constraints' && (
           <div className="border-t bg-purple-50/30 px-4 py-3">
             <div className="space-y-2 max-w-2xl">
               {session.session_constraints.map((sc) => (
