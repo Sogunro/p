@@ -135,7 +135,7 @@ export function StickyNote({
   // Dynamic border/bg colors based on strength band
   const getBorderColor = () => {
     if (!note.has_evidence) return 'border-yellow-400 bg-yellow-50'
-    if (!strengthBand) return 'border-gray-300 bg-gray-50' // evidence linked but no strength computed
+    if (!strengthBand) return 'border-green-400 bg-green-50' // evidence linked but no strength computed yet
     switch (strengthBand) {
       case 'strong': return 'border-green-400 bg-green-50'
       case 'moderate': return 'border-yellow-400 bg-yellow-50'
@@ -145,7 +145,7 @@ export function StickyNote({
 
   const getBadgeColor = () => {
     if (!note.has_evidence) return 'bg-yellow-500 text-white'
-    if (!strengthBand) return 'bg-gray-400 text-white'
+    if (!strengthBand) return 'bg-green-500 text-white'
     switch (strengthBand) {
       case 'strong': return 'bg-green-500 text-white'
       case 'moderate': return 'bg-yellow-500 text-white'
