@@ -76,6 +76,35 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
   const [noteLinks, setNoteLinks] = useState(stickyNoteLinks)
   const [notePositions, setNotePositions] = useState<Map<string, { x: number; y: number; sectionX: number; sectionY: number }>>(new Map())
 
+  // Contradiction data per evidence (evidence_id -> count)
+  const [contradictionCounts, setContradictionCounts] = useState<Map<string, number>>(new Map())
+
+  // Agent processing indicator
+  const [agentProcessing, setAgentProcessing] = useState(false)
+
+  // Fetch contradiction alerts for this session's workspace
+  useEffect(() => {
+    async function fetchContradictions() {
+      try {
+        const res = await fetch('/api/agent/alerts?agent_type=contradiction_detector&limit=100')
+        if (res.ok) {
+          const data = await res.json()
+          const counts = new Map<string, number>()
+          for (const alert of (data.alerts || [])) {
+            const evidenceIds: string[] = alert.related_evidence_ids || []
+            for (const eid of evidenceIds) {
+              counts.set(eid, (counts.get(eid) || 0) + 1)
+            }
+          }
+          setContradictionCounts(counts)
+        }
+      } catch {
+        // Silently fail — contradictions are supplementary info
+      }
+    }
+    fetchContradictions()
+  }, [])
+
   // Canvas panning handlers
   const handleCanvasMouseDown = (e: MouseEvent<HTMLDivElement>) => {
     // Only pan if clicking on the canvas itself, not on sections
@@ -442,6 +471,10 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
       })
 
       if (response.ok) {
+        // Show agent processing indicator (agents auto-trigger server-side on link)
+        setAgentProcessing(true)
+        setTimeout(() => setAgentProcessing(false), 5000)
+
         // Fetch the bank item to add to local state
         const bankResponse = await fetch(`/api/evidence-bank?id=${evidenceBankId}`)
         let bankItem: EvidenceBank | null = null
@@ -898,6 +931,15 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
             ← Back
           </Link>
           <h1 className="font-semibold text-lg">{session.title}</h1>
+          {agentProcessing && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs text-blue-700">
+              <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Agents processing...
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {/* Zoom controls */}
@@ -1125,6 +1167,19 @@ export function SessionCanvas({ session: initialSession, stickyNoteLinks }: Sess
                   constraints={constraintInfoList}
                   sectionType={section.section_type}
                   isUnvalidated={section.section_type === 'solutions' && problemsAreWeak && !note.has_evidence}
+                  contradictionCount={(() => {
+                    const linked = note.linked_evidence || []
+                    let count = 0
+                    for (const e of linked) {
+                      count += contradictionCounts.get(e.id) || 0
+                    }
+                    return count
+                  })()}
+                  segments={(() => {
+                    const linked = note.linked_evidence || []
+                    const segs = [...new Set(linked.map(e => e.segment).filter((s): s is string => !!s))]
+                    return segs
+                  })()}
                 />
               ))}
             </SectionContainer>

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { SidebarLayout } from '@/components/sidebar-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -147,23 +147,20 @@ export default function EvidenceWeightsPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto py-8 px-4 max-w-4xl">
+      <SidebarLayout>
         <p className="text-gray-500">Loading configuration...</p>
-      </div>
+      </SidebarLayout>
     )
   }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <div className="mb-6">
-        <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-700">
-          ← Back to Dashboard
-        </Link>
-        <h1 className="text-2xl font-bold mt-2">Evidence Weights</h1>
-        <p className="text-gray-500 mt-1">
-          Configure how different evidence sources are weighted in strength calculations.
-        </p>
+    <SidebarLayout>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-xl font-bold text-gray-900">Evidence Weights</h1>
       </div>
+      <p className="text-gray-500 mb-6">
+        Configure how different evidence sources are weighted in strength calculations.
+      </p>
 
       {/* Template Selection */}
       <Card className="mb-6">
@@ -347,6 +344,6 @@ export default function EvidenceWeightsPage() {
           <span className="text-sm text-green-600">{saveMessage}</span>
         )}
       </div>
-    </div>
+    </SidebarLayout>
   )
 }

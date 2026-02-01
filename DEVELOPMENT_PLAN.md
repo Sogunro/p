@@ -1,8 +1,8 @@
 # Discovery OS — Development Plan
 
-**Last updated:** 2026-01-31 (Phase F complete, Agent Architecture v2)
-**Spec coverage:** ~85% built → targeting 100% across 8 phases
-**Current DB tables:** 31 | **API routes:** 44 | **Pages:** 23
+**Last updated:** 2026-02-01 (Phase G complete, Outcomes + Calibration)
+**Spec coverage:** ~92% built → targeting 100% across 8 phases
+**Current DB tables:** 33 | **API routes:** 49 | **Pages:** 25
 
 ---
 
@@ -16,8 +16,8 @@
 | D | Vector Search + Enrichment | COMPLETE | pgvector, embeddings, similarity search, Python service, smart search UI |
 | E | AI Agents (v2) | COMPLETE | 7-agent architecture, auto-triggers, Haiku/Sonnet split |
 | F | Discovery Brief + External Push | COMPLETE | Brief generation, Linear/Jira push, shareable links |
-| G | Outcomes + Calibration | PLANNED | Outcomes tracking, calibration dashboard |
-| H | Polish + Portfolio | PLANNED | Demo data, loading states, architecture docs |
+| G | Outcomes + Calibration | COMPLETE | Outcomes tracking, calibration dashboard, AI draft outcomes, canvas enhancements |
+| H | Polish + Portfolio | IN PROGRESS | Sidebar layout, loading states, architecture docs |
 
 ---
 
@@ -472,35 +472,74 @@
 
 ---
 
-## Phase G: Outcomes + Calibration — PLANNED
+## Phase G: Outcomes + Calibration — COMPLETE
 
 **Goal:** Close the feedback loop — track what happened after decisions
 
-### Database changes needed
-- New table: `outcomes` (decision_id, result, target_metrics, actual_metrics, learnings, source_retrospective)
-- New table: `pm_calibration` (workspace_id, user_id, prediction_accuracy, source_reliability JSONB)
+### What was built
+- **SQL Migration** (`supabase_phase_g_outcomes_calibration.sql`)
+  - New table: `outcomes` (#32) — decision_id, outcome_type (success/partial/failure/pending), title, target_metrics JSONB, actual_metrics JSONB, learnings, source_retrospective, review_date
+  - New table: `pm_calibration` (#33) — workspace_id, user_id, total_predictions, correct_predictions, prediction_accuracy, source_reliability JSONB, period_start/end
+  - RLS policies + indexes + updated_at triggers
 
-### What to build
-- Outcome tracking UI (link outcomes to decisions, track actual vs predicted)
-- Calibration dashboard page (source reliability over time, team accuracy)
-- Weekly evidence health ritual (scheduled Decay Monitor digest — leverages Agent 2)
-- Auto-generated draft outcomes (Claude suggests metrics based on decision)
-- Real-time contradiction detection on canvas (leverages Agent 3)
+- **TypeScript Types** (`app/src/types/database.ts`)
+  - Added `OutcomeType`, `Outcome`, `PMCalibration` types
+  - Added table definitions to Database interface
+
+- **Outcomes API**
+  - `app/src/app/api/outcomes/route.ts` — GET (list with filters) + POST (create)
+  - `app/src/app/api/outcomes/[id]/route.ts` — GET / PATCH / DELETE
+  - `app/src/app/api/outcomes/generate/route.ts` — AI-generated draft outcomes (Claude Sonnet suggests metrics, success criteria, review date)
+
+- **Calibration API**
+  - `app/src/app/api/calibration/route.ts` — GET (live stats: accuracy, source reliability, commit accuracy)
+  - `app/src/app/api/calibration/recalculate/route.ts` — POST (recompute for current period)
+
+- **Outcomes UI Page** (`app/src/app/outcomes/page.tsx`)
+  - Stats overview (total, success, partial, failure, accuracy %)
+  - Create outcome form with decision selector, status picker, learnings, review date
+  - Filter by outcome type
+  - Quick status change buttons inline
+  - Links to decisions
+
+- **Calibration Dashboard** (`app/src/app/calibration/page.tsx`)
+  - Overall accuracy %, Commit accuracy %, Decisions tracked
+  - Source reliability bar chart (which sources lead to success)
+  - Interpretation guide
+  - Recalculate button
+
+- **Decision Detail — Outcome Section** (`app/src/app/decisions/[id]/page.tsx`)
+  - Inline outcome tracking with status picker
+  - "AI Suggest" button for auto-generated outcome metrics
+  - Quick status change on existing outcomes
+  - Link to full outcomes page
+
+- **Canvas Enhancements**
+  - `app/src/components/session/sticky-note.tsx` — Contradiction count badge (red), Segment badge (blue)
+  - `app/src/components/session/session-canvas.tsx` — Fetches contradiction alerts, passes data to sticky notes
+
+- **Navigation Updates** (`app/src/app/dashboard/page.tsx`)
+  - Added Outcomes and Calibration links in header nav
 
 ---
 
-## Phase H: Polish + Portfolio — PLANNED
+## Phase H: Polish + Portfolio — IN PROGRESS
 
 **Goal:** Demo-ready product with seeded data and documentation
 
+### What's done
+- **Sidebar layout** — Consistent navigation across all pages (dark slate sidebar, 7 nav items, top bar with Settings + Logout)
+- **Route-level loading states** — Skeleton loading.tsx for dashboard, evidence-bank, insights, decisions, outcomes, calibration, briefs
+- **Reusable skeleton components** — `<Skeleton>` primitive + `<PageSkeleton>` composite with stats rows
+- **Agent processing indicator** — Canvas toolbar shows spinner when auto-trigger agents are running after evidence link
+
 ### What to build
 - Seed demo data with varied evidence types, decisions, outcomes
-- Loading states and error handling across all agent interactions
 - Architecture documentation (for portfolio)
 - Portfolio presentation narrative showing framework skills:
   - **n8n** — Integration orchestration, no-code automation, webhook handling
-  - **LangGraph** — Stateful agents, conditional logic, looping workflows
-  - **CrewAI** — Multi-agent collaboration, role-based design
+  - **Anthropic SDK** — Direct Claude API calls for all agents (Haiku + Sonnet)
+  - **FastAPI** — Python service for agent execution on Railway
 
 ---
 
@@ -528,10 +567,6 @@
 
 ---
 
-## Quick Reference: Current Database (31 tables)
+## Quick Reference: Current Database (33 tables)
 
-profiles, templates, template_sections, sessions, session_objectives, session_checklist_items, constraints, session_constraints, sections, sticky_notes, evidence, sticky_note_links, session_analyses, workspaces, workspace_members, evidence_bank, sticky_note_evidence_links, insights_feed, workspace_settings, daily_insights_analysis, workspace_evidence_sources, workspace_invites, validation_workflows, validation_workflow_history, confidence_history, decisions, evidence_decision_links, agent_alerts, **discovery_briefs**, **external_integrations**, **external_pushes**
-
-### Tables coming in future phases
-- `outcomes` (Phase G)
-- `pm_calibration` (Phase G)
+profiles, templates, template_sections, sessions, session_objectives, session_checklist_items, constraints, session_constraints, sections, sticky_notes, evidence, sticky_note_links, session_analyses, workspaces, workspace_members, evidence_bank, sticky_note_evidence_links, insights_feed, workspace_settings, daily_insights_analysis, workspace_evidence_sources, workspace_invites, validation_workflows, validation_workflow_history, confidence_history, decisions, evidence_decision_links, agent_alerts, discovery_briefs, external_integrations, external_pushes, **outcomes**, **pm_calibration**

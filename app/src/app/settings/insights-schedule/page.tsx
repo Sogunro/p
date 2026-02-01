@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { SidebarLayout } from '@/components/sidebar-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -387,35 +388,26 @@ export default function InsightsSchedulePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading configuration...</p>
-      </div>
+      <SidebarLayout>
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading configuration...</p>
+        </div>
+      </SidebarLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/insights" className="text-gray-600 hover:text-gray-900">
-                ← Back to Insights
-              </Link>
-              <h1 className="text-xl font-bold">Insights Configuration</h1>
-            </div>
-            {canEdit && (
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
+    <SidebarLayout>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-xl font-bold text-gray-900">Insights Schedule</h1>
+        {canEdit && (
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </Button>
+        )}
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="space-y-6">
         {/* Fetch Result Alert */}
         {fetchResult && (
           <div className={`p-4 rounded-lg ${fetchResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
@@ -821,7 +813,7 @@ export default function InsightsSchedulePage() {
             </div>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </SidebarLayout>
   )
 }

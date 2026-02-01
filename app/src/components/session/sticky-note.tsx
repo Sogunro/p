@@ -21,6 +21,8 @@ interface StickyNoteProps {
   constraints?: ConstraintInfo[]
   sectionType?: SectionType
   isUnvalidated?: boolean
+  contradictionCount?: number
+  segments?: string[]
 }
 
 export function StickyNote({
@@ -35,6 +37,8 @@ export function StickyNote({
   constraints = [],
   sectionType,
   isUnvalidated = false,
+  contradictionCount = 0,
+  segments = [],
 }: StickyNoteProps) {
   const [isEditing, setIsEditing] = useState(!note.content)
   const [content, setContent] = useState(note.content)
@@ -237,6 +241,24 @@ export function StickyNote({
                 </span>
               )
             })()}
+            {/* Contradiction badge */}
+            {contradictionCount > 0 && (
+              <span
+                className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-100 text-red-600"
+                title={`${contradictionCount} contradiction${contradictionCount !== 1 ? 's' : ''} detected`}
+              >
+                !{contradictionCount}
+              </span>
+            )}
+            {/* Segment badge */}
+            {segments.length > 0 && (
+              <span
+                className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-600 truncate max-w-[40px]"
+                title={`Segment: ${segments.join(', ')}`}
+              >
+                {segments[0].slice(0, 4)}
+              </span>
+            )}
           </div>
 
           {/* Delete button */}

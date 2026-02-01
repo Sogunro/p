@@ -4,8 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { LogoutButton } from '@/components/logout-button'
 import { DeleteSessionButton } from '@/components/delete-session-button'
+import { DashboardClient } from './dashboard-client'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -51,105 +51,93 @@ export default async function DashboardPage() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return (
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )
+      case 'active':
+        return (
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+        )
+      default:
+        return (
+          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </div>
+        )
+    }
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-xl font-bold text-gray-900">Product Discovery</h1>
-            <div className="flex items-center gap-4">
-              <Link href="/decisions">
-                <Button variant="ghost" size="sm">
-                  Decisions
-                </Button>
-              </Link>
-              <Link href="/evidence-bank">
-                <Button variant="ghost" size="sm">
-                  Evidence Bank
-                </Button>
-              </Link>
-              <Link href="/insights">
-                <Button variant="ghost" size="sm">
-                  Insights
-                </Button>
-              </Link>
-              <Link href="/discovery-brief">
-                <Button variant="ghost" size="sm">
-                  Briefs
-                </Button>
-              </Link>
-              <Link href="/settings/team">
-                <Button variant="ghost" size="sm">
-                  Team
-                </Button>
-              </Link>
-              <Link href="/settings/evidence-weights">
-                <Button variant="ghost" size="sm">
-                  Weights
-                </Button>
-              </Link>
-              <Link href="/settings/pm-tools">
-                <Button variant="ghost" size="sm">
-                  PM Tools
-                </Button>
-              </Link>
-              <Link href="/settings/constraints">
-                <Button variant="ghost" size="sm">
-                  Settings
-                </Button>
-              </Link>
-              <span className="text-sm text-gray-600">
-                {profile?.full_name || user.email}
-              </span>
-              <LogoutButton />
-            </div>
-          </div>
-        </div>
-      </header>
+  const formatRelativeDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    if (diffDays === 0) return 'Updated today'
+    if (diffDays === 1) return 'Updated yesterday'
+    if (diffDays < 7) return `Updated ${diffDays} days ago`
+    if (diffDays < 30) return `Updated ${Math.floor(diffDays / 7)} week${Math.floor(diffDays / 7) > 1 ? 's' : ''} ago`
+    return `Updated ${Math.floor(diffDays / 30)} month${Math.floor(diffDays / 30) > 1 ? 's' : ''} ago`
+  }
+
+  const userName = profile?.full_name || user.email || 'User'
+
+  return (
+    <DashboardClient userName={userName}>
+      <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h2 className="text-2xl font-semibold text-gray-900">Your Discovery Sessions</h2>
           <Link href="/session/new">
-            <Button>+ New Session</Button>
+            <Button className="bg-blue-600 hover:bg-blue-700">+ New Session</Button>
           </Link>
         </div>
 
         {sessions && sessions.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {sessions.map((session) => (
               <div key={session.id} className="relative group">
                 <Link href={`/session/${session.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-lg pr-8">{session.title}</CardTitle>
-                        <Badge className={getStatusColor(session.status)}>
-                          {session.status}
-                        </Badge>
+                  <Card className="hover:shadow-md transition-shadow cursor-pointer h-full border-gray-200">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start gap-3">
+                        {getStatusIcon(session.status)}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start">
+                            <CardTitle className="text-base pr-2 leading-tight">{session.title}</CardTitle>
+                            <Badge className={`${getStatusColor(session.status)} shrink-0 capitalize text-xs`}>
+                              {session.status}
+                            </Badge>
+                          </div>
+                          <CardDescription className="mt-1">
+                            {session.templates?.name || 'Full Discovery Session'}
+                          </CardDescription>
+                        </div>
                       </div>
-                      <CardDescription>
-                        {session.templates?.name || 'Blank Canvas'}
-                      </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-gray-500">
-                        Updated {formatDate(session.updated_at)}
-                      </p>
+                    <CardContent className="pt-0">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {formatRelativeDate(session.updated_at)}
+                      </div>
                     </CardContent>
                   </Card>
                 </Link>
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
                   <DeleteSessionButton
                     sessionId={session.id}
                     sessionTitle={session.title}
@@ -159,14 +147,14 @@ export default async function DashboardPage() {
             ))}
           </div>
         ) : (
-          <Card className="text-center py-12">
+          <Card className="text-center py-12 border-gray-200">
             <CardContent>
               <h3 className="text-lg font-medium text-gray-900 mb-2">No sessions yet</h3>
               <p className="text-gray-500 mb-4">
                 Start your first discovery session to explore problems and solutions.
               </p>
               <Link href="/session/new">
-                <Button>Create Your First Session</Button>
+                <Button className="bg-blue-600 hover:bg-blue-700">Create Your First Session</Button>
               </Link>
             </CardContent>
           </Card>
@@ -176,7 +164,7 @@ export default async function DashboardPage() {
         {agentAlerts && agentAlerts.length > 0 && (
           <div className="mt-10">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Agent Activity</h2>
-            <Card>
+            <Card className="border-gray-200">
               <CardContent className="p-4">
                 <div className="space-y-3">
                   {agentAlerts.map((alert) => {
@@ -209,7 +197,7 @@ export default async function DashboardPage() {
                             {alert.title}
                           </span>
                           <span className="text-xs text-gray-400 shrink-0">
-                            {formatDate(alert.created_at)}
+                            {new Date(alert.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </span>
                           {!alert.is_read && (
                             <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
@@ -228,7 +216,7 @@ export default async function DashboardPage() {
             </Card>
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </DashboardClient>
   )
 }

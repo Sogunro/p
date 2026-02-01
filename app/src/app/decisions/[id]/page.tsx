@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { SidebarLayout } from '@/components/sidebar-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { Decision, DecisionStatus, EvidenceBank, EvidenceDecisionLink } from '@/types/database'
+import type { Decision, DecisionStatus, EvidenceBank, EvidenceDecisionLink, OutcomeType } from '@/types/database'
 import { getStrengthBand, getStrengthBandColor, getStrengthBandLabel } from '@/lib/evidence-strength'
 
 type DecisionWithLinks = Decision & {
@@ -60,6 +61,20 @@ export default function DecisionDetailPage() {
 
   // Agent state
   const [decisionAlerts, setDecisionAlerts] = useState<Array<{ id: string; agent_type: string; alert_type: string; title: string; content: string; created_at: string }>>([])
+
+  // Outcome state
+  const [outcome, setOutcome] = useState<{
+    id: string; outcome_type: OutcomeType; title: string;
+    target_metrics: Array<{ name: string; target: string }>;
+    actual_metrics: Array<{ name: string; actual: string }>;
+    learnings: string | null; review_date: string | null;
+  } | null>(null)
+  const [showOutcomeForm, setShowOutcomeForm] = useState(false)
+  const [outcomeType, setOutcomeType] = useState<OutcomeType>('pending')
+  const [outcomeLearnings, setOutcomeLearnings] = useState('')
+  const [outcomeReviewDate, setOutcomeReviewDate] = useState('')
+  const [outcomeSaving, setOutcomeSaving] = useState(false)
+  const [generatingOutcome, setGeneratingOutcome] = useState(false)
 
   // External push state
   const [pushingLinear, setPushingLinear] = useState(false)
@@ -236,6 +251,85 @@ export default function DecisionDetailPage() {
     }
   }, [decisionId])
 
+  // Fetch outcome for this decision
+  useEffect(() => {
+    if (decisionId) {
+      fetch(`/api/outcomes?decision_id=${decisionId}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.outcomes?.length > 0) setOutcome(data.outcomes[0])
+        })
+        .catch(() => {})
+    }
+  }, [decisionId])
+
+  async function handleCreateOutcome() {
+    setOutcomeSaving(true)
+    try {
+      const res = await fetch('/api/outcomes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision_id: decisionId,
+          outcome_type: outcomeType,
+          title: decision?.title ? `Outcome: ${decision.title}` : 'Outcome',
+          learnings: outcomeLearnings || null,
+          review_date: outcomeReviewDate || null,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setOutcome(data.outcome)
+        setShowOutcomeForm(false)
+        setOutcomeLearnings('')
+        setOutcomeReviewDate('')
+      }
+    } catch (error) {
+      console.error('Failed to create outcome:', error)
+    } finally {
+      setOutcomeSaving(false)
+    }
+  }
+
+  async function handleUpdateOutcomeType(type: OutcomeType) {
+    if (!outcome) return
+    try {
+      const res = await fetch(`/api/outcomes/${outcome.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome_type: type }),
+      })
+      if (res.ok) {
+        setOutcome(prev => prev ? { ...prev, outcome_type: type } : null)
+      }
+    } catch (error) {
+      console.error('Failed to update outcome:', error)
+    }
+  }
+
+  async function handleGenerateOutcome() {
+    setGeneratingOutcome(true)
+    try {
+      const res = await fetch('/api/outcomes/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision_id: decisionId }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.draft) {
+          setOutcomeReviewDate(data.draft.review_date || '')
+          setOutcomeLearnings(data.draft.success_criteria || '')
+          setShowOutcomeForm(true)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate outcome:', error)
+    } finally {
+      setGeneratingOutcome(false)
+    }
+  }
+
   async function handlePush(type: 'linear' | 'jira') {
     const setLoading = type === 'linear' ? setPushingLinear : setPushingJira
     setLoading(true)
@@ -288,17 +382,21 @@ export default function DecisionDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading decision...</p>
-      </div>
+      <SidebarLayout>
+        <div className="flex items-center justify-center py-12">
+          <p className="text-gray-500">Loading decision...</p>
+        </div>
+      </SidebarLayout>
     )
   }
 
   if (!decision) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Decision not found</p>
-      </div>
+      <SidebarLayout>
+        <div className="flex items-center justify-center py-12">
+          <p className="text-gray-500">Decision not found</p>
+        </div>
+      </SidebarLayout>
     )
   }
 
@@ -309,32 +407,27 @@ export default function DecisionDetailPage() {
   const linkedIds = new Set(linkedEvidence.map(e => e.id))
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <Link href="/decisions" className="text-gray-500 hover:text-gray-700">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </Link>
-              <h1 className="text-lg font-bold text-gray-900 truncate">{decision.title}</h1>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleGenerateBrief} disabled={briefLoading} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
-                {briefLoading ? 'Generating...' : 'Generate Brief'}
-              </Button>
-              <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={handleDelete}>
-                Delete
-              </Button>
-            </div>
-          </div>
+    <SidebarLayout>
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-3">
+          <Link href="/decisions" className="text-gray-500 hover:text-gray-700">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </Link>
+          <h1 className="text-xl font-bold text-gray-900">{decision.title}</h1>
         </div>
-      </header>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleGenerateBrief} disabled={briefLoading} className="text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+            {briefLoading ? 'Generating...' : 'Generate Brief'}
+          </Button>
+          <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={handleDelete}>
+            Delete
+          </Button>
+        </div>
+      </div>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
@@ -660,6 +753,125 @@ export default function DecisionDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Outcome Tracking */}
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg">Outcome</CardTitle>
+                  {!outcome && !showOutcomeForm && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGenerateOutcome}
+                        disabled={generatingOutcome}
+                        className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                      >
+                        {generatingOutcome ? 'Generating...' : 'AI Suggest'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowOutcomeForm(true)}
+                      >
+                        + Track Outcome
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {outcome ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      {(['success', 'partial', 'failure', 'pending'] as const).map(t => {
+                        const labels: Record<OutcomeType, string> = { success: 'Success', partial: 'Partial', failure: 'Failure', pending: 'Pending' }
+                        const colors: Record<OutcomeType, string> = { success: 'bg-green-100 text-green-700 border-green-300', partial: 'bg-yellow-100 text-yellow-700 border-yellow-300', failure: 'bg-red-100 text-red-700 border-red-300', pending: 'bg-gray-100 text-gray-700 border-gray-300' }
+                        return (
+                          <button
+                            key={t}
+                            onClick={() => handleUpdateOutcomeType(t)}
+                            className={`flex-1 py-1.5 px-2 rounded border text-xs font-medium transition-all ${
+                              outcome.outcome_type === t ? colors[t] + ' border-current' : 'bg-white border-gray-200 text-gray-400 hover:bg-gray-50'
+                            }`}
+                          >
+                            {labels[t]}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {outcome.learnings && (
+                      <div>
+                        <label className="text-xs font-medium text-gray-500 block mb-1">Learnings</label>
+                        <p className="text-sm text-gray-700">{outcome.learnings}</p>
+                      </div>
+                    )}
+                    {outcome.review_date && (
+                      <div className="text-xs text-gray-400">
+                        Review: {new Date(outcome.review_date).toLocaleDateString()}
+                      </div>
+                    )}
+                    <Link href="/outcomes" className="text-xs text-blue-600 hover:underline">
+                      View all outcomes
+                    </Link>
+                  </div>
+                ) : showOutcomeForm ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 block mb-1">Status</label>
+                      <div className="flex gap-1">
+                        {(['pending', 'success', 'partial', 'failure'] as const).map(t => {
+                          const labels: Record<OutcomeType, string> = { success: 'Success', partial: 'Partial', failure: 'Failure', pending: 'Pending' }
+                          return (
+                            <button
+                              key={t}
+                              onClick={() => setOutcomeType(t)}
+                              className={`flex-1 py-1.5 rounded border text-xs font-medium transition-all ${
+                                outcomeType === t ? 'bg-gray-900 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                              }`}
+                            >
+                              {labels[t]}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 block mb-1">Learnings / Success Criteria</label>
+                      <Textarea
+                        placeholder="What did you learn?"
+                        value={outcomeLearnings}
+                        onChange={(e) => setOutcomeLearnings(e.target.value)}
+                        rows={3}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-500 block mb-1">Review Date</label>
+                      <Input
+                        type="date"
+                        value={outcomeReviewDate}
+                        onChange={(e) => setOutcomeReviewDate(e.target.value)}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleCreateOutcome} disabled={outcomeSaving}>
+                        {outcomeSaving ? 'Saving...' : 'Save'}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setShowOutcomeForm(false)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 py-4 text-center">
+                    No outcome tracked yet. Track the result to close the feedback loop.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           {/* Sidebar */}
@@ -851,7 +1063,7 @@ export default function DecisionDetailPage() {
             </Card>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </SidebarLayout>
   )
 }

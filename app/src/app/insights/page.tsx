@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { SidebarLayout } from '@/components/sidebar-layout'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -208,61 +209,56 @@ export default function InsightsFeedPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading insights...</p>
-      </div>
+      <SidebarLayout>
+        <div className="flex items-center justify-center py-12">
+          <p className="text-gray-500">Loading insights...</p>
+        </div>
+      </SidebarLayout>
     )
   }
 
   // Modal for full analysis view
   if (selectedAnalysis) {
     return (
-      <div className="min-h-screen bg-gray-100 p-8">
+      <SidebarLayout>
         <div className="max-w-4xl mx-auto">
           <InsightsAnalysisPanel
             analysis={selectedAnalysis}
             onClose={() => setSelectedAnalysis(null)}
           />
         </div>
-      </div>
+      </SidebarLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <SidebarLayout>
       {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                ← Back
-              </Link>
-              <h1 className="text-xl font-bold">User Insights Feed</h1>
-              {pendingInsights.length > 0 && (
-                <Badge className="bg-blue-100 text-blue-800">
-                  {pendingInsights.length} new
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Link href="/evidence-bank">
-                <Button variant="outline">View Evidence Bank</Button>
-              </Link>
-              <Link href="/settings/insights-schedule">
-                <Button variant="outline">📅 Schedule</Button>
-              </Link>
-              <Link href="/settings/evidence-sources">
-                <Button variant="outline">Configure Sources</Button>
-              </Link>
-            </div>
-          </div>
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold text-gray-900">User Insights Feed</h1>
+          {pendingInsights.length > 0 && (
+            <Badge className="bg-blue-100 text-blue-800">
+              {pendingInsights.length} new
+            </Badge>
+          )}
         </div>
-      </header>
+        <div className="flex items-center gap-2">
+          <Link href="/evidence-bank">
+            <Button variant="outline">View Evidence Bank</Button>
+          </Link>
+          <Link href="/settings/insights-schedule">
+            <Button variant="outline">Schedule</Button>
+          </Link>
+          <Link href="/settings/evidence-sources">
+            <Button variant="outline">Configure Sources</Button>
+          </Link>
+        </div>
+      </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="bg-white border-b rounded-lg mb-6">
+        <div className="px-2">
           <div className="flex gap-1">
             <button
               onClick={() => setActiveTab('all')}
@@ -299,7 +295,7 @@ export default function InsightsFeedPage() {
       </div>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div>
         {/* Last Fetch Info */}
         <div className="mb-6 flex items-center justify-between">
           <div className="text-sm text-gray-500">
@@ -555,7 +551,7 @@ export default function InsightsFeedPage() {
             )}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </SidebarLayout>
   )
 }

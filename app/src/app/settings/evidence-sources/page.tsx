@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { SidebarLayout } from '@/components/sidebar-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -282,37 +283,28 @@ export default function EvidenceSourcesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading configuration...</p>
-      </div>
+      <SidebarLayout>
+        <div className="flex items-center justify-center h-64">
+          <p className="text-gray-500">Loading configuration...</p>
+        </div>
+      </SidebarLayout>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
-                ← Back
-              </Link>
-              <h1 className="text-xl font-bold">Evidence Sources</h1>
-            </div>
-            <div className="flex items-center gap-2">
-              {canEdit && (
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </Button>
-              )}
-            </div>
-          </div>
+    <SidebarLayout>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-xl font-bold text-gray-900">Evidence Sources</h1>
+        <div className="flex items-center gap-2">
+          {canEdit && (
+            <Button onClick={handleSave} disabled={saving}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          )}
         </div>
-      </header>
+      </div>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <div className="space-y-6">
         {/* Save Result Alert */}
         {saveResult && (
           <div className={`p-4 rounded-lg ${saveResult.success ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
@@ -656,7 +648,7 @@ export default function EvidenceSourcesPage() {
             </div>
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </div>
+    </SidebarLayout>
   )
 }

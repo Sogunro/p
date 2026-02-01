@@ -995,6 +995,95 @@ export interface Database {
           created_at?: string
         }
       }
+      // Phase G: Outcomes + Calibration
+      outcomes: {
+        Row: {
+          id: string
+          workspace_id: string
+          decision_id: string
+          outcome_type: OutcomeType
+          title: string
+          target_metrics: Json
+          actual_metrics: Json
+          learnings: string | null
+          source_retrospective: string | null
+          review_date: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          decision_id: string
+          outcome_type?: OutcomeType
+          title?: string
+          target_metrics?: Json
+          actual_metrics?: Json
+          learnings?: string | null
+          source_retrospective?: string | null
+          review_date?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          decision_id?: string
+          outcome_type?: OutcomeType
+          title?: string
+          target_metrics?: Json
+          actual_metrics?: Json
+          learnings?: string | null
+          source_retrospective?: string | null
+          review_date?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      pm_calibration: {
+        Row: {
+          id: string
+          workspace_id: string
+          user_id: string
+          total_predictions: number
+          correct_predictions: number
+          prediction_accuracy: number
+          source_reliability: Json
+          period_start: string
+          period_end: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          workspace_id: string
+          user_id: string
+          total_predictions?: number
+          correct_predictions?: number
+          prediction_accuracy?: number
+          source_reliability?: Json
+          period_start: string
+          period_end: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          workspace_id?: string
+          user_id?: string
+          total_predictions?: number
+          correct_predictions?: number
+          prediction_accuracy?: number
+          source_reliability?: Json
+          period_start?: string
+          period_end?: string
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
   }
 }
@@ -1076,6 +1165,11 @@ export type WorkspaceRole = 'owner' | 'admin' | 'member'
 
 // Phase 4: Daily Insights Analysis types
 export type DailyInsightsAnalysis = Database['public']['Tables']['daily_insights_analysis']['Row']
+
+// Phase G: Outcomes + Calibration types
+export type OutcomeType = 'success' | 'partial' | 'failure' | 'pending'
+export type Outcome = Database['public']['Tables']['outcomes']['Row']
+export type PMCalibration = Database['public']['Tables']['pm_calibration']['Row']
 
 // Phase F: Discovery Brief + External Push types
 export interface DiscoveryBrief {
