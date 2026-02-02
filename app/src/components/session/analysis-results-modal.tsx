@@ -163,15 +163,15 @@ function getBandBg(band: string): string {
 }
 
 function getRecBadge(rec: string): string {
-  if (rec === 'COMMIT') return 'bg-green-100 text-green-800'
-  if (rec === 'VALIDATE') return 'bg-yellow-100 text-yellow-800'
-  return 'bg-gray-100 text-gray-600'
+  if (rec === 'COMMIT') return 'bg-[#DCFCE7] text-[#166534] border border-[#86EFAC]'
+  if (rec === 'VALIDATE') return 'bg-[#FEF3C7] text-[#92400E] border border-[#FCD34D]'
+  return 'bg-[#FEE2E2] text-[#991B1B] border border-[#FCA5A5]'
 }
 
 function getRecBorder(rec: string): string {
-  if (rec === 'COMMIT') return 'border-green-200 bg-green-50'
-  if (rec === 'VALIDATE') return 'border-yellow-200 bg-yellow-50'
-  return 'border-gray-200 bg-gray-50'
+  if (rec === 'COMMIT') return 'border-green-200 bg-green-50/50'
+  if (rec === 'VALIDATE') return 'border-yellow-200 bg-yellow-50/50'
+  return 'border-red-200 bg-red-50/30'
 }
 
 // ============================================
@@ -299,99 +299,234 @@ function ProblemsTabV2({ data, onCommit }: {
   onCommit: (title: string, strength: number) => void
 }) {
   const [expandedProblem, setExpandedProblem] = useState<number | null>(null)
+  const [activeFilters, setActiveFilters] = useState<string[]>(['ALL'])
+  const [strengthFilters, setStrengthFilters] = useState<string[]>(['ALL'])
   const problems = data.rankedProblems || []
 
-  // Band stats
+  // Counts
+  const commitCount = problems.filter((p: SpecRankedProblem) => p.recommendation === 'COMMIT').length
+  const validateCount = problems.filter((p: SpecRankedProblem) => p.recommendation === 'VALIDATE').length
+  const parkCount = problems.filter((p: SpecRankedProblem) => p.recommendation === 'PARK').length
   const strongCount = problems.filter((p: SpecRankedProblem) => p.band === 'strong').length
   const moderateCount = problems.filter((p: SpecRankedProblem) => p.band === 'moderate').length
   const weakCount = problems.filter((p: SpecRankedProblem) => p.band === 'weak').length
 
+  // Filter click handler (recommendation)
+  const handleFilterClick = (filterId: string) => {
+    if (filterId === 'ALL') {
+      setActiveFilters(['ALL'])
+      return
+    }
+    let newFilters = activeFilters.filter(f => f !== 'ALL')
+    if (activeFilters.includes(filterId)) {
+      newFilters = newFilters.filter(f => f !== filterId)
+      if (newFilters.length === 0) newFilters = ['ALL']
+    } else {
+      newFilters = [...newFilters, filterId]
+      if (newFilters.length === 3) newFilters = ['ALL']
+    }
+    setActiveFilters(newFilters)
+  }
+
+  // Filter click handler (strength band)
+  const handleStrengthClick = (band: string) => {
+    if (band === 'ALL') {
+      setStrengthFilters(['ALL'])
+      return
+    }
+    let newFilters = strengthFilters.filter(f => f !== 'ALL')
+    if (strengthFilters.includes(band)) {
+      newFilters = newFilters.filter(f => f !== band)
+      if (newFilters.length === 0) newFilters = ['ALL']
+    } else {
+      newFilters = [...newFilters, band]
+      if (newFilters.length === 3) newFilters = ['ALL']
+    }
+    setStrengthFilters(newFilters)
+  }
+
+  // Apply filters
+  const filteredProblems = problems.filter((p: SpecRankedProblem) => {
+    const passesRec = activeFilters.includes('ALL') || activeFilters.includes(p.recommendation)
+    const passesStrength = strengthFilters.includes('ALL') || strengthFilters.includes(p.band)
+    return passesRec && passesStrength
+  })
+
+  const clearAllFilters = () => {
+    setActiveFilters(['ALL'])
+    setStrengthFilters(['ALL'])
+  }
+
   return (
-    <div className="space-y-4">
-      {/* Stats row */}
+    <div className="space-y-5">
+      {/* Header row */}
       <div className="flex items-center justify-between">
-        <h4 className="font-semibold text-gray-700">Ranked Problems ({problems.length})</h4>
+        <h4 className="font-semibold text-gray-800 text-base">Ranked Problems ({problems.length})</h4>
+        {/* Strength band pills */}
         <div className="flex gap-2 text-xs">
-          <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">{strongCount} Strong</span>
-          <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">{moderateCount} Moderate</span>
-          <span className="px-2 py-0.5 rounded bg-red-100 text-red-700">{weakCount} Weak</span>
+          <button
+            onClick={() => handleStrengthClick('strong')}
+            disabled={strongCount === 0}
+            className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+              strongCount === 0 ? 'opacity-40 cursor-not-allowed' :
+              strengthFilters.includes('strong') && !strengthFilters.includes('ALL')
+                ? 'bg-[#DCFCE7] text-[#166534] ring-1 ring-green-400'
+                : 'bg-green-50 text-green-700 hover:bg-green-100 cursor-pointer'
+            }`}
+          >
+            {strongCount} Strong
+          </button>
+          <button
+            onClick={() => handleStrengthClick('moderate')}
+            disabled={moderateCount === 0}
+            className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+              moderateCount === 0 ? 'opacity-40 cursor-not-allowed' :
+              strengthFilters.includes('moderate') && !strengthFilters.includes('ALL')
+                ? 'bg-[#FEF3C7] text-[#92400E] ring-1 ring-amber-400'
+                : 'bg-amber-50 text-amber-700 hover:bg-amber-100 cursor-pointer'
+            }`}
+          >
+            {moderateCount} Moderate
+          </button>
+          <button
+            onClick={() => handleStrengthClick('weak')}
+            disabled={weakCount === 0}
+            className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+              weakCount === 0 ? 'opacity-40 cursor-not-allowed' :
+              strengthFilters.includes('weak') && !strengthFilters.includes('ALL')
+                ? 'bg-[#FEE2E2] text-[#991B1B] ring-1 ring-red-400'
+                : 'bg-red-50 text-red-700 hover:bg-red-100 cursor-pointer'
+            }`}
+          >
+            {weakCount} Weak
+          </button>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex gap-2 text-xs">
-        <span className="px-2 py-0.5 rounded bg-green-100 text-green-700">COMMIT</span>
-        <span className="px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">VALIDATE</span>
-        <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-600">PARK</span>
+      {/* Recommendation filter chips */}
+      <div className="flex gap-2" role="group" aria-label="Filter by recommendation">
+        <button
+          onClick={() => handleFilterClick('ALL')}
+          aria-pressed={activeFilters.includes('ALL')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer border ${
+            activeFilters.includes('ALL')
+              ? 'bg-gray-700 text-white border-gray-700'
+              : 'bg-transparent border-gray-200 text-gray-500 hover:border-gray-300 hover:shadow-sm'
+          }`}
+        >
+          All <span className="text-xs opacity-80">({problems.length})</span>
+        </button>
+        <button
+          onClick={() => handleFilterClick('COMMIT')}
+          disabled={commitCount === 0}
+          aria-pressed={activeFilters.includes('COMMIT')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+            commitCount === 0 ? 'opacity-40 cursor-not-allowed border-gray-200 text-gray-400' :
+            activeFilters.includes('COMMIT')
+              ? 'bg-green-500/15 border-green-500 text-green-700 cursor-pointer'
+              : 'bg-transparent border-gray-200 text-gray-500 hover:border-gray-300 hover:shadow-sm cursor-pointer'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-green-500" />
+          COMMIT <span className="text-xs opacity-80">({commitCount})</span>
+        </button>
+        <button
+          onClick={() => handleFilterClick('VALIDATE')}
+          disabled={validateCount === 0}
+          aria-pressed={activeFilters.includes('VALIDATE')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+            validateCount === 0 ? 'opacity-40 cursor-not-allowed border-gray-200 text-gray-400' :
+            activeFilters.includes('VALIDATE')
+              ? 'bg-amber-500/15 border-amber-500 text-amber-700 cursor-pointer'
+              : 'bg-transparent border-gray-200 text-gray-500 hover:border-gray-300 hover:shadow-sm cursor-pointer'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-amber-500" />
+          VALIDATE <span className="text-xs opacity-80">({validateCount})</span>
+        </button>
+        <button
+          onClick={() => handleFilterClick('PARK')}
+          disabled={parkCount === 0}
+          aria-pressed={activeFilters.includes('PARK')}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
+            parkCount === 0 ? 'opacity-40 cursor-not-allowed border-gray-200 text-gray-400' :
+            activeFilters.includes('PARK')
+              ? 'bg-red-500/15 border-red-500 text-red-700 cursor-pointer'
+              : 'bg-transparent border-gray-200 text-gray-500 hover:border-gray-300 hover:shadow-sm cursor-pointer'
+          }`}
+        >
+          <span className="w-2 h-2 rounded-full bg-red-500" />
+          PARK <span className="text-xs opacity-80">({parkCount})</span>
+        </button>
       </div>
 
-      {problems.length > 0 ? (
-        <div className="space-y-2">
-          {problems.map((problem: SpecRankedProblem, i: number) => {
-            const isExpanded = expandedProblem === i
+      {/* Problem cards */}
+      {filteredProblems.length > 0 ? (
+        <div className="space-y-3">
+          {filteredProblems.map((problem: SpecRankedProblem, i: number) => {
+            const originalIndex = problems.indexOf(problem)
+            const isExpanded = expandedProblem === originalIndex
+            const scoreColor = problem.band === 'strong' ? 'text-green-600' : problem.band === 'moderate' ? 'text-amber-600' : 'text-red-600'
+            const barColor = problem.band === 'strong' ? 'bg-green-500' : problem.band === 'moderate' ? 'bg-amber-500' : 'bg-red-500'
 
             return (
-              <Card key={i} className={getRecBorder(problem.recommendation)}>
-                <CardContent className="py-3">
+              <Card key={originalIndex} className={`${getRecBorder(problem.recommendation)} transition-all duration-200`}>
+                <CardContent className="py-4 px-5">
                   {/* Main row */}
-                  <div className="flex items-start gap-3">
-                    {/* Strength */}
-                    <div className="flex flex-col items-center gap-1 min-w-[44px]">
-                      <span className={`text-lg font-bold ${getBandColor(problem.band)}`}>
+                  <div className="flex items-center gap-4">
+                    {/* Score display */}
+                    <div className="flex flex-col items-center gap-1.5 min-w-[52px]">
+                      <span className={`text-2xl font-bold ${scoreColor}`}>
                         {problem.strength_pct}
                       </span>
-                      <div className="w-8 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                        <div className={`h-full ${getBandBg(problem.band)} rounded-full`} style={{ width: `${problem.strength_pct}%` }} />
+                      <div className="w-10 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={`h-full ${barColor} rounded-full transition-all`} style={{ width: `${problem.strength_pct}%` }} />
                       </div>
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 text-sm">{problem.title}</p>
-                      {/* Metadata row */}
-                      <div className="flex flex-wrap gap-1.5 mt-1.5 text-[10px]">
-                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                      <p className="font-semibold text-gray-900">{problem.title}</p>
+                      {/* Meta row */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-gray-500">
+                        <span className="inline-flex items-center gap-1">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                           {problem.sources_count} sources
                         </span>
+                        <span className="text-gray-300">·</span>
+                        {problem.has_direct_voice ? (
+                          <span className="text-green-600 font-medium">Direct voice</span>
+                        ) : (
+                          <span className="text-amber-600">No voice</span>
+                        )}
+                        <span className="text-gray-300">·</span>
+                        <span className={problem.gaps.length > 0 ? 'text-red-600' : 'text-gray-400'}>
+                          {problem.gaps.length} gap{problem.gaps.length !== 1 ? 's' : ''}
+                        </span>
                         {problem.segments.length > 0 && (
-                          <span className="px-1.5 py-0.5 rounded bg-purple-50 text-purple-700">
-                            {problem.segments.length} segment{problem.segments.length !== 1 ? 's' : ''}
-                          </span>
-                        )}
-                        {problem.has_direct_voice && (
-                          <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700">Voice</span>
-                        )}
-                        {!problem.has_direct_voice && problem.sources_count > 0 && (
-                          <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">No voice</span>
-                        )}
-                        {problem.evidence_age_days > 90 && (
-                          <span className="px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">
-                            {problem.evidence_age_days}d old
-                          </span>
-                        )}
-                        {problem.gaps.length > 0 && (
-                          <span className="px-1.5 py-0.5 rounded bg-red-50 text-red-700">
-                            {problem.gaps.length} gap{problem.gaps.length !== 1 ? 's' : ''}
-                          </span>
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <span>{problem.segments.join(', ')}</span>
+                          </>
                         )}
                       </div>
                     </div>
 
-                    {/* Recommendation + actions */}
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <Badge className={getRecBadge(problem.recommendation)}>
+                    {/* Recommendation badge + actions */}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <Badge className={`${getRecBadge(problem.recommendation)} text-xs px-3 py-1`}>
                         {problem.recommendation}
                       </Badge>
                       <button
-                        onClick={() => setExpandedProblem(isExpanded ? null : i)}
-                        className="text-[10px] px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                        onClick={() => setExpandedProblem(isExpanded ? null : originalIndex)}
+                        className="text-xs px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
                       >
                         {isExpanded ? 'Collapse' : 'Details'}
                       </button>
                       {problem.recommendation === 'COMMIT' && (
                         <button
                           onClick={() => onCommit(problem.title, problem.strength_pct)}
-                          className="text-[10px] px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 font-medium"
+                          className="text-xs px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700 font-medium transition-colors"
                         >
                           Commit
                         </button>
@@ -401,18 +536,18 @@ function ProblemsTabV2({ data, onCommit }: {
 
                   {/* Expanded details */}
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-gray-200 space-y-3">
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-4">
                       {/* Evidence summary */}
                       {problem.evidence_summary.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1">Evidence Summary</p>
-                          <div className="space-y-1">
+                          <p className="text-sm font-semibold text-gray-700 mb-2">Evidence Summary</p>
+                          <div className="space-y-2">
                             {problem.evidence_summary.map((es, j) => (
-                              <div key={j} className="text-xs bg-white p-2 rounded border border-gray-100">
-                                <span className="text-gray-500">&ldquo;</span>
+                              <div key={j} className="text-sm bg-white p-3 rounded-lg border border-gray-100">
+                                <span className="text-gray-400">&ldquo;</span>
                                 <span className="text-gray-700 italic">{es.quote}</span>
-                                <span className="text-gray-500">&rdquo;</span>
-                                <span className="text-gray-400 ml-2">— {es.source} (w:{es.weight})</span>
+                                <span className="text-gray-400">&rdquo;</span>
+                                <span className="text-gray-400 ml-2 text-xs">— {es.source} (weight: {es.weight})</span>
                               </div>
                             ))}
                           </div>
@@ -422,19 +557,19 @@ function ProblemsTabV2({ data, onCommit }: {
                       {/* Constraint checks */}
                       {problem.constraint_checks.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1">Constraint Checks</p>
-                          <div className="space-y-1">
+                          <p className="text-sm font-semibold text-gray-700 mb-2">Constraint Checks</p>
+                          <div className="space-y-1.5">
                             {problem.constraint_checks.map((cc, j) => (
-                              <div key={j} className="flex items-center justify-between text-xs p-1.5 bg-white rounded border border-gray-100">
+                              <div key={j} className="flex items-center justify-between text-sm p-2.5 bg-white rounded-lg border border-gray-100">
                                 <span className="text-gray-700">{cc.constraint}</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-400 text-[10px] max-w-[200px] truncate">{cc.note}</span>
-                                  <span className={`px-1.5 py-0.5 rounded font-medium ${
+                                <div className="flex items-center gap-3">
+                                  <span className="text-gray-400 text-xs max-w-[300px] truncate">{cc.note}</span>
+                                  <span className={`px-2 py-0.5 rounded-md font-medium text-xs ${
                                     cc.status === 'pass' ? 'bg-green-100 text-green-700' :
                                     cc.status === 'fail' ? 'bg-red-100 text-red-700' :
                                     'bg-gray-100 text-gray-500'
                                   }`}>
-                                    {cc.status === 'pass' ? '✓' : cc.status === 'fail' ? '✗' : '—'}
+                                    {cc.status === 'pass' ? 'Pass' : cc.status === 'fail' ? 'Fail' : 'N/A'}
                                   </span>
                                 </div>
                               </div>
@@ -446,11 +581,14 @@ function ProblemsTabV2({ data, onCommit }: {
                       {/* Gaps */}
                       {problem.gaps.length > 0 && (
                         <div>
-                          <p className="text-xs font-semibold text-gray-600 mb-1">Evidence Gaps</p>
-                          <ul className="space-y-1">
+                          <p className="text-sm font-semibold text-gray-700 mb-2">Evidence Gaps</p>
+                          <ul className="space-y-1.5">
                             {problem.gaps.map((gap, j) => (
-                              <li key={j} className="text-xs text-orange-700 flex items-start gap-1">
-                                <span className="text-orange-400">!</span> {gap}
+                              <li key={j} className="text-sm text-orange-700 flex items-start gap-2 bg-orange-50 rounded-lg p-2.5 border border-orange-100">
+                                <svg className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                </svg>
+                                {gap}
                               </li>
                             ))}
                           </ul>
@@ -463,8 +601,26 @@ function ProblemsTabV2({ data, onCommit }: {
             )
           })}
         </div>
+      ) : problems.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          <p className="font-medium text-gray-500">No problems added yet</p>
+        </div>
       ) : (
-        <p className="text-gray-500 text-center py-8">No problems analyzed yet.</p>
+        <div className="text-center py-12 text-gray-400">
+          <svg className="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <p className="font-medium text-gray-500 mb-2">No problems match current filters</p>
+          <button
+            onClick={clearAllFilters}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Clear filters
+          </button>
+        </div>
       )}
     </div>
   )
