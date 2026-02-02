@@ -1287,6 +1287,104 @@ export interface ParsedDailyAnalysis {
   action_items: ActionItem[]
 }
 
+// ============================================
+// Spec v2 Analysis Types (9-section analysis)
+// ============================================
+
+export interface SpecEvidenceSummaryItem {
+  quote: string
+  source: string
+  weight: number
+}
+
+export interface SpecConstraintCheck {
+  constraint: string
+  status: 'pass' | 'fail' | 'not_tested'
+  note: string
+}
+
+export interface SpecRankedProblem {
+  title: string
+  strength_pct: number
+  band: 'weak' | 'moderate' | 'strong'
+  recommendation: 'COMMIT' | 'VALIDATE' | 'PARK'
+  sources_count: number
+  segments: string[]
+  has_direct_voice: boolean
+  evidence_age_days: number
+  evidence_summary: SpecEvidenceSummaryItem[]
+  constraint_checks: SpecConstraintCheck[]
+  gaps: string[]
+}
+
+export interface SpecObjectiveCheck {
+  text: string
+  addressed: boolean
+  relevant_problems: string[]
+}
+
+export interface SpecConstraintMatrixRow {
+  constraint: string
+  pass_count: number
+  fail_count: number
+  not_tested: number
+  flagged_problems: string[]
+}
+
+export interface SpecChecklistItem {
+  text: string
+  status: 'met' | 'not_met' | 'partial'
+  note: string
+}
+
+export interface SpecContradiction {
+  type: string
+  description: string
+  affected_problems: string[]
+  severity: 'high' | 'medium' | 'low'
+}
+
+export interface SpecRecommendedAction {
+  type: 'COMMIT' | 'VALIDATE' | 'PARK'
+  problem: string
+  rationale: string
+}
+
+export interface SpecNextStep {
+  action: string
+  reason: string
+  priority: 'high' | 'medium' | 'low'
+}
+
+export interface SpecSessionHeader {
+  title: string
+  date: string
+  objective_count: number
+  problem_count: number
+  total_evidence: number
+  avg_strength: number
+}
+
+export interface SpecSummaryStats {
+  evidence_coverage_pct: number
+  voice_coverage_pct: number
+  constraint_pass_rate: number
+  top_risk: string
+}
+
+export interface SpecAnalysisData {
+  spec_version: 2
+  sessionHeader: SpecSessionHeader
+  summaryStats: SpecSummaryStats
+  objectivesCheck: SpecObjectiveCheck[]
+  rankedProblems: SpecRankedProblem[]
+  constraintMatrix: SpecConstraintMatrixRow[]
+  checklistReview: SpecChecklistItem[]
+  contradictions: SpecContradiction[]
+  recommendedActions: SpecRecommendedAction[]
+  nextSteps: SpecNextStep[]
+}
+
 // Phase A: Evidence Strength interfaces
 export interface WeightConfig {
   [sourceType: string]: number

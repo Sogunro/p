@@ -60,7 +60,7 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch analysis' }, { status: 500 })
     }
 
-    // Parse raw_response for any fields not in dedicated columns
+    // Parse raw_response
     let parsedResponse: Record<string, unknown> = {}
     if (analysis.raw_response) {
       try {
@@ -72,8 +72,25 @@ export async function GET(
       }
     }
 
-    // Build response with fallbacks to raw_response
+    // Check if this is a v2 (spec) analysis
+    if (parsedResponse.spec_version === 2) {
+      // V2 format: return the spec analysis directly
+      return NextResponse.json({
+        success: true,
+        analysis: {
+          ...parsedResponse,
+          id: analysis.id,
+          session_id: analysis.session_id,
+          created_at: analysis.created_at,
+          summary: analysis.summary ?? '',
+          sessionTitle: session.title,
+        },
+      })
+    }
+
+    // V1 format: build response with fallbacks to raw_response (backward compatible)
     const responseData = {
+      spec_version: 1,
       id: analysis.id,
       session_id: analysis.session_id,
       created_at: analysis.created_at,
