@@ -846,7 +846,7 @@ export function AnalysisResultsModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] w-[90vw] flex flex-col p-0">
+      <DialogContent className="max-w-[95vw] max-h-[95vh] w-[95vw] h-[92vh] flex flex-col p-0">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b shrink-0">
           <div className="flex items-start justify-between">
